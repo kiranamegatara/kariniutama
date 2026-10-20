@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PT Karini Utama - PDF Tools</title>
+    <title>PT Karini Utama - PDF Tools & Auto Rename</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -27,12 +27,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- FileSaver for triggering downloads -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Tesseract.js for OCR (CamScanner fallback) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
         
-        /* Modern Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -74,22 +75,26 @@
     <header class="bg-white shadow-sm relative z-50">
         <div class="w-full h-1 bg-gradient-to-r from-navy via-yellow to-navy"></div>
         <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-center relative">
-            <img src="Karini-Utama.png" alt="PT Karini Utama" class="h-12 md:h-16 object-contain drop-shadow-sm">
+            <h1 class="text-xl md:text-2xl font-bold text-navy tracking-wide">PT KARINI UTAMA</h1>
         </div>
     </header>
 
     <main class="flex-grow max-w-6xl mx-auto px-4 py-10 w-full flex flex-col gap-8">
         
+        <!-- Tab Menu Navigasi -->
         <div class="flex justify-center w-full overflow-x-auto pb-2">
             <div class="bg-white p-1.5 rounded-full shadow-sm border border-slate-200 flex flex-nowrap gap-1 relative min-w-max">
-                <button class="tab-btn tab-active px-6 py-2.5 rounded-full text-sm transition-all duration-300" data-mode="binder">
+                <button class="tab-btn tab-active px-5 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="binder">
                     Binder PDF
                 </button>
-                <button class="tab-btn tab-inactive px-6 py-2.5 rounded-full text-sm transition-all duration-300" data-mode="rename_bt">
-                    Rename Voucher 
+                <button class="tab-btn tab-inactive px-5 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="rename_custom">
+                    Rename Custom (No-Nama)
                 </button>
-                <button class="tab-btn tab-inactive px-6 py-2.5 rounded-full text-sm transition-all duration-300" data-mode="rename_voucher">
+                <button class="tab-btn tab-inactive px-5 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="rename_bt">
                     Rename Bukti Transfer
+                </button>
+                <button class="tab-btn tab-inactive px-5 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="rename_voucher">
+                    Rename Voucher
                 </button>
             </div>
         </div>
@@ -101,7 +106,7 @@
                 <div class="mb-6">
                     <h2 id="mode-title" class="text-2xl font-bold text-navy mb-2">Binder PDF</h2>
                     <p id="mode-desc" class="text-slate-500 text-sm leading-relaxed min-h-[40px]">
-                        Menggabungkan PDF berdasarkan ID di awal nama file. Hanya menggabungkan jika pola akhiran persis ["1", "2", "3", "4", "5"] atau ["1", "2", "2.", "3", "4", "5"].
+                        Menggabungkan PDF berdasarkan ID di awal nama file.
                     </p>
                 </div>
 
@@ -172,12 +177,12 @@
         let finalZip = null;
 
         const modeData = {
-            'binder': { title: 'Binder PDF', desc: 'Menggabungkan PDF berdasarkan ID di awal nama file. Hanya menggabungkan jika pola akhiran persis ["1", "2", "3", "4", "5"] atau ["1", "2", "2.", "3", "4", "5"].' },
-            'rename_bt': { title: 'Rename Bukti Transfer', desc: 'Membaca isi teks halaman 1. Mencari Nomor Dokumen. File akan di-rename menjadi [Nomor] 1.pdf.' },
-            'rename_voucher': { title: 'Rename Voucher', desc: 'Membaca isi teks halaman 1. Mencari kode BPB. File akan di-rename menjadi [Kode]..pdf.' }
+            'binder': { title: 'Binder PDF', desc: 'Menggabungkan PDF berdasarkan ID di awal nama file.' },
+            'rename_custom': { title: 'Rename Custom (No-Nama)', desc: 'Membaca isi PDF, mencari nomor dokumen dan nama karyawan/pihak (Contoh format hasil: 428-YANTO.pdf).' },
+            'rename_bt': { title: 'Rename Bukti Transfer', desc: 'Membaca teks isi PDF. Mencari kode BPB dan mengubah nama file menjadi [Angka]..pdf (Contoh: 199..pdf).' },
+            'rename_voucher': { title: 'Rename Voucher / Dokumen', desc: 'Membaca teks isi PDF (atau menggunakan OCR jika dari CamScanner). Mengubah nama file menjadi [Nomor] 1.pdf.' }
         };
 
-        // Tab Switching
         tabBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 tabBtns.forEach(b => {
@@ -191,7 +196,6 @@
                 modeTitle.textContent = modeData[currentMode].title;
                 modeDesc.textContent = modeData[currentMode].desc;
                 
-                // Reset state on tab change to prevent accidental mix-ups
                 selectedFiles = [];
                 updateFileCount();
                 logArea.innerHTML = `<div class="text-slate-500">Mode diubah ke ${modeData[currentMode].title}. Menunggu input...</div>`;
@@ -260,17 +264,37 @@
             logArea.innerHTML = '<div class="text-slate-500">Log dibersihkan...</div>';
         });
 
-        // Helpers
         async function extractTextFromFirstPage(file) {
             try {
                 const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+                const pdf = await pdfjsLib.getDocument({data: arrayBuffer.slice(0)}).promise;
                 
                 if (pdf.numPages === 0) return "";
                 
                 const page = await pdf.getPage(1);
+                
+                // Ekstraksi normal
                 const textContent = await page.getTextContent();
-                const text = textContent.items.map(item => item.str).join(' ');
+                let text = textContent.items.map(item => item.str).join(' ').trim();
+                
+                // Jika teks kosong, berarti ini PDF hasil Scan (Gambar)
+                // Kita gunakan OCR (Tesseract.js)
+                if (text.length < 20) {
+                    logMessage(`👀 Menggunakan OCR (Scan Gambar) untuk: ${file.name}...`, 'warn');
+                    const viewport = page.getViewport({scale: 1.5}); // Scale untuk kualitas gambar OCR
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    
+                    await page.render({canvasContext: context, viewport: viewport}).promise;
+                    
+                    const result = await Tesseract.recognize(canvas, 'eng');
+                    text = result.data.text;
+                }
+                
+                page.cleanup();
+                await pdf.destroy();
                 return text;
             } catch (error) {
                 console.error("Error reading PDF:", error);
@@ -302,6 +326,8 @@
             try {
                 if (currentMode === 'binder') {
                     await processBinder();
+                } else if (currentMode === 'rename_custom') {
+                    await processRenameCustom();
                 } else if (currentMode === 'rename_bt') {
                     await processRenameBT();
                 } else if (currentMode === 'rename_voucher') {
@@ -334,7 +360,6 @@
             const pola_valid_1 = ["1", "2", "3", "4", "5"];
             const pola_valid_2 = ["1", "2", "2.", "3", "4", "5"];
 
-            // 1. Group files
             for (const file of selectedFiles) {
                 const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
                 const parts = nameWithoutExt.split(' ');
@@ -352,13 +377,9 @@
             logMessage(`Ditemukan ${idList.length} Nomor File (ID) berbeda.`);
             let berhasil = 0, dilewati = 0;
 
-            // 2. Process groups
             for (const id of idList) {
                 const daftar_file = grupDokumen[id];
-                
-                // Sort array of objects based on string comparison of 'akhiran'
                 daftar_file.sort((a, b) => a.akhiran.localeCompare(b.akhiran, undefined, {numeric: true}));
-                
                 const list_akhiran = daftar_file.map(item => item.akhiran);
                 
                 if (arrayEquals(list_akhiran, pola_valid_1) || arrayEquals(list_akhiran, pola_valid_2)) {
@@ -366,34 +387,62 @@
                     
                     try {
                         const mergedPdf = await PDFLib.PDFDocument.create();
-                        
                         for (const item of daftar_file) {
                             const arrayBuffer = await item.file.arrayBuffer();
                             const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
                             const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
                             copiedPages.forEach((page) => mergedPdf.addPage(page));
                         }
-                        
                         const pdfBytes = await mergedPdf.save();
-                        
-                        // Add to ZIP
                         finalZip.file(`${id}.pdf`, pdfBytes);
-                        
                         berhasil++;
-                        logMessage(`[SUKSES] ${id}.pdf -> Pola: ${JSON.stringify(list_akhiran)}`, 'success');
+                        logMessage(`[SUKSES] ${id}.pdf`, 'success');
                     } catch (err) {
                         logMessage(`[ERROR] Gagal menggabungkan ${id}: ${err.message}`, 'error');
                         dilewati++;
                     }
                 } else {
                     dilewati++;
-                    logMessage(`[DILEWATI] ID ${id} tidak lengkap -> Isi: ${JSON.stringify(list_akhiran)}`, 'warn');
+                    logMessage(`[DILEWATI] ID ${id} tidak lengkap`, 'warn');
                 }
             }
-            
+            logMessage(`Berhasil: ${berhasil} | Dilewati: ${dilewati}`);
+        }
+
+        async function processRenameCustom() {
+            let berhasil = 0, gagal = 0;
+
+            for (const file of selectedFiles) {
+                try {
+                    const text = await extractTextFromFirstPage(file);
+                    
+                    let matchNomor = text.match(/0*(\d+)\/KUT/i);
+                    if(!matchNomor) matchNomor = text.match(/Nomor Dokumen\s*[:\s]*0*(\d+)/i);
+                    
+                    let matchNama = text.match(/NAMA\s*[:\s]+([a-zA-Z0-9\s\.\-]+)/i);
+                    
+                    if (matchNomor && matchNama) {
+                        const nomor = matchNomor[1].trim();
+                        let nama = matchNama[1].replace(/NOMOR|IDENTITAS|TEMPAT|NPWP/gi, '').trim();
+                        
+                        const newFilename = `${nomor}-${nama}.pdf`;
+                        const arrayBuffer = await file.arrayBuffer();
+                        
+                        finalZip.file(newFilename, arrayBuffer);
+                        berhasil++;
+                        logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'`, 'success');
+                    } else {
+                        gagal++;
+                        logMessage(`❌ [GAGAL] Format nomor/nama tidak ditemukan pada '${file.name}'`, 'error');
+                    }
+                } catch (e) {
+                    gagal++;
+                    logMessage(`⚠️ [ERROR] pada '${file.name}': ${e.message}`, 'error');
+                }
+            }
             logMessage(`-`.repeat(40));
             logMessage(`Total Berhasil : ${berhasil}`);
-            logMessage(`Total Dilewati : ${dilewati}`);
+            logMessage(`Total Gagal    : ${gagal}`);
         }
 
         async function processRenameBT() {
@@ -402,36 +451,23 @@
             for (const file of selectedFiles) {
                 try {
                     const text = await extractTextFromFirstPage(file);
-                    
-                    let match = text.match(/Nomor\s*Dokumen\s*[:\s|]*(\d+)/i);
-                    if (!match) {
-                        match = text.match(/\b(21\d{8})\b/);
-                    }
+                    const match = text.match(/BPB\s*0*(\d+)/i);
 
                     if (match) {
-                        const nomor_dokumen = match[1] || match[0];
-                        const newFilename = `${nomor_dokumen} 1.pdf`;
-                        
-                        // Get original file buffer
+                        const angka = match[1];
+                        const newFilename = `${angka}..pdf`;
                         const arrayBuffer = await file.arrayBuffer();
                         
-                        // Check if file already exists in zip to avoid overwriting blindly
-                        // (Though JSZip handles it, it's good to log)
-                        if(finalZip.file(newFilename)) {
-                            logMessage(`⚠️ [DUPLIKAT] ${newFilename} sudah ada, menimpa versi sebelumnya.`, 'warn');
-                        }
-                        
                         finalZip.file(newFilename, arrayBuffer);
-                        
                         berhasil++;
                         logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'`, 'success');
                     } else {
                         gagal++;
-                        logMessage(`❌ [GAGAL] Nomor Dokumen tidak terbaca pada '${file.name}'`, 'error');
+                        logMessage(`❌ [GAGAL] Kode BPB tidak terbaca pada '${file.name}'`, 'error');
                     }
                 } catch (e) {
                     gagal++;
-                    logMessage(`⚠️ [ERROR] saat membaca '${file.name}': ${e.message}`, 'error');
+                    logMessage(`⚠️ [ERROR] pada '${file.name}': ${e.message}`, 'error');
                 }
             }
             logMessage(`-`.repeat(40));
@@ -446,26 +482,33 @@
                 try {
                     const text = await extractTextFromFirstPage(file);
                     
-                    const match = text.match(/BPB\s*0*(\d+)/i);
+                    // Regex lebih fleksibel jika ada typo OCR
+                    let match = text.match(/Nomor\s*Dokumen\s*[:\s|]*(\d{8,12})/i);
+                    
+                    // Coba cari 10 angka beruntun (misal 2100007390)
+                    if (!match) {
+                        match = text.match(/\b(21\d{8})\b/);
+                    }
+                    // Jika OCR berantakan tapi ada nomornya:
+                    if (!match) {
+                        match = text.match(/(21\d{8})/);
+                    }
 
                     if (match) {
-                        const angka = match[1];
-                        const newFilename = `${angka}..pdf`;
-                        
-                        // Get original file buffer
+                        const nomorDokumen = match[1] || match[0];
+                        const newFilename = `${nomorDokumen} 1.pdf`;
                         const arrayBuffer = await file.arrayBuffer();
                         
                         finalZip.file(newFilename, arrayBuffer);
-                        
                         berhasil++;
                         logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'`, 'success');
                     } else {
                         gagal++;
-                        logMessage(`❌ [GAGAL] Kode BPB tidak terbaca pada '${file.name}'`, 'error');
+                        logMessage(`❌ [GAGAL] Nomor Dokumen tidak terbaca pada '${file.name}'`, 'error');
                     }
                 } catch (e) {
                     gagal++;
-                    logMessage(`⚠️ [ERROR] saat membaca '${file.name}': ${e.message}`, 'error');
+                    logMessage(`⚠️ [ERROR] pada '${file.name}': ${e.message}`, 'error');
                 }
             }
             logMessage(`-`.repeat(40));
@@ -480,10 +523,8 @@
             
             try {
                 const zipFileName = `Hasil_${currentMode}_${new Date().getTime()}.zip`;
-                
                 const content = await finalZip.generateAsync({ type: "blob" });
                 saveAs(content, zipFileName);
-                
                 logMessage(`📥 Berhasil mengunduh: ${zipFileName}`, 'success');
             } catch (err) {
                 logMessage(`❌ Error saat membuat ZIP: ${err.message}`, 'error');

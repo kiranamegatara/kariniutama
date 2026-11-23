@@ -106,7 +106,7 @@
                 <div class="mb-6">
                     <h2 id="mode-title" class="text-2xl font-bold text-navy mb-2">Binder PDF</h2>
                     <p id="mode-desc" class="text-slate-500 text-sm leading-relaxed min-h-[40px]">
-                        Menggabungkan PDF berdasarkan ID di awal nama file.
+                        Menggabungkan PDF berdasarkan ID di awal nama file (urutan 1 s/d 5 beserta variasi titiknya).
                     </p>
                 </div>
 
@@ -177,7 +177,7 @@
         let finalZip = null;
 
         const modeData = {
-            'binder': { title: 'Binder PDF', desc: 'Menggabungkan PDF berdasarkan ID di awal nama file.' },
+            'binder': { title: 'Binder PDF', desc: 'Menggabungkan PDF berdasarkan ID di awal nama file (urutan 1 s/d 5 beserta variasi titiknya).' },
             'rename_custom': { title: 'Rename Custom (No-Nama)', desc: 'Membaca isi PDF, mencari nomor dokumen dan nama karyawan/pihak (Contoh format hasil: 428-YANTO.pdf).' },
             'rename_bt': { title: 'Rename Bukti Transfer', desc: 'Membaca teks isi PDF. Mencari kode BPB dan mengubah nama file menjadi [Angka]..pdf (Contoh: 199..pdf).' },
             'rename_voucher': { title: 'Rename Voucher / Dokumen', desc: 'Membaca teks isi PDF (atau menggunakan OCR jika dari CamScanner). Mengubah nama file menjadi [Nomor] 1.pdf.' }
@@ -278,10 +278,9 @@
                 let text = textContent.items.map(item => item.str).join(' ').trim();
                 
                 // Jika teks kosong, berarti ini PDF hasil Scan (Gambar)
-                // Kita gunakan OCR (Tesseract.js)
                 if (text.length < 20) {
                     logMessage(`👀 Menggunakan OCR (Scan Gambar) untuk: ${file.name}...`, 'warn');
-                    const viewport = page.getViewport({scale: 1.5}); // Scale untuk kualitas gambar OCR
+                    const viewport = page.getViewport({scale: 1.5});
                     const canvas = document.createElement('canvas');
                     const context = canvas.getContext('2d');
                     canvas.height = viewport.height;
@@ -301,13 +300,6 @@
                 return "";
             }
         }
-
-        const arrayEquals = (a, b) => {
-            return Array.isArray(a) &&
-                Array.isArray(b) &&
-                a.length === b.length &&
-                a.every((val, index) => val === b[index]);
-        };
 
         btnProcess.addEventListener('click', async () => {
             if (selectedFiles.length === 0) {
@@ -357,19 +349,29 @@
 
         async function processBinder() {
             const grupDokumen = {};
-            const pola_valid_1 = ["1", "2", "3", "4", "5"];
-            const pola_valid_2 = ["1", "2", "2.", "3", "4", "5"];
+            const nomorWajib = [1, 2, 3, 4, 5];
 
             for (const file of selectedFiles) {
-                const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-                const parts = nameWithoutExt.split(' ');
+                // Hapus ekstensi .pdf di paling akhir
+                const nameWithoutExt = file.name.replace(/\.pdf$/i, "");
+                const parts = nameWithoutExt.trim().split(/\s+/);
                 
                 if (parts.length > 1) {
                     const id = parts[0];
                     const akhiran = parts.slice(1).join(' ').trim();
                     
-                    if (!grupDokumen[id]) grupDokumen[id] = [];
-                    grupDokumen[id].push({ akhiran, file });
+                    // Memisahkan angka dasar dan titik di belakangnya (contoh: "1..." -> nomor: 1, jumlahTitik: 3)
+                    const match = akhiran.match(/^(\d+)(\.*)$/);
+                    
+                    if (match) {
+                        const nomor = parseInt(match[1], 10);
+                        const jumlahTitik = match[2].length;
+                        
+                        if (!grupDokumen[id]) grupDokumen[id] = [];
+                        grupDokumen[id].push({ akhiran, nomor, jumlahTitik, file });
+                    } else {
+                        logMessage(`[ABAIKAN] Akhiran tidak dikenali pada: ${file.name}`, 'warn');
+                    }
                 }
             }
 
@@ -379,11 +381,24 @@
 
             for (const id of idList) {
                 const daftar_file = grupDokumen[id];
-                daftar_file.sort((a, b) => a.akhiran.localeCompare(b.akhiran, undefined, {numeric: true}));
-                const list_akhiran = daftar_file.map(item => item.akhiran);
                 
-                if (arrayEquals(list_akhiran, pola_valid_1) || arrayEquals(list_akhiran, pola_valid_2)) {
-                    logMessage(`Menggabungkan ID ${id}...`);
+                // Urutkan berdasarkan nomor (1-5), lalu berdasarkan jumlah titik dari sedikit ke banyak
+                daftar_file.sort((a, b) => {
+                    if (a.nomor !== b.nomor) {
+                        return a.nomor - b.nomor;
+                    }
+                    return a.jumlahTitik - b.jumlahTitik;
+                });
+
+                // Cek apakah nomor 1, 2, 3, 4, dan 5 semuanya hadir
+                const nomorTersedia = new Set(daftar_file.map(item => item.nomor));
+                const lengkap1Sampai5 = nomorWajib.every(num => nomorTersedia.has(num));
+                // Pastikan juga tidak ada nomor di luar 1-5 (opsional, hapus baris di bawah jika boleh > 5)
+                const hanya1Sampai5 = daftar_file.every(item => item.nomor >= 1 && item.nomor <= 5);
+
+                if (lengkap1Sampai5 && hanya1Sampai5) {
+                    const urutanLabel = daftar_file.map(item => item.akhiran).join(' -> ');
+                    logMessage(`Menggabungkan ID ${id} (${urutanLabel})...`);
                     
                     try {
                         const mergedPdf = await PDFLib.PDFDocument.create();
@@ -396,16 +411,19 @@
                         const pdfBytes = await mergedPdf.save();
                         finalZip.file(`${id}.pdf`, pdfBytes);
                         berhasil++;
-                        logMessage(`[SUKSES] ${id}.pdf`, 'success');
+                        logMessage(`[SUKSES] ${id}.pdf (${daftar_file.length} file digabung)`, 'success');
                     } catch (err) {
                         logMessage(`[ERROR] Gagal menggabungkan ${id}: ${err.message}`, 'error');
                         dilewati++;
                     }
                 } else {
                     dilewati++;
-                    logMessage(`[DILEWATI] ID ${id} tidak lengkap`, 'warn');
+                    const kurang = nomorWajib.filter(num => !nomorTersedia.has(num));
+                    const infoKurang = kurang.length > 0 ? ` (Kurang nomor: ${kurang.join(', ')})` : ' (Ada nomor di luar 1-5)';
+                    logMessage(`[DILEWATI] ID ${id} tidak lengkap${infoKurang}`, 'warn');
                 }
             }
+            logMessage(`-`.repeat(40));
             logMessage(`Berhasil: ${berhasil} | Dilewati: ${dilewati}`);
         }
 
@@ -482,14 +500,11 @@
                 try {
                     const text = await extractTextFromFirstPage(file);
                     
-                    // Regex lebih fleksibel jika ada typo OCR
                     let match = text.match(/Nomor\s*Dokumen\s*[:\s|]*(\d{8,12})/i);
                     
-                    // Coba cari 10 angka beruntun (misal 2100007390)
                     if (!match) {
                         match = text.match(/\b(21\d{8})\b/);
                     }
-                    // Jika OCR berantakan tapi ada nomornya:
                     if (!match) {
                         match = text.match(/(21\d{8})/);
                     }

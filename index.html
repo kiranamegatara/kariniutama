@@ -84,8 +84,11 @@
         <!-- Tab Menu Navigasi -->
         <div class="flex justify-center w-full overflow-x-auto pb-2">
             <div class="bg-white p-1.5 rounded-full shadow-sm border border-slate-200 flex flex-nowrap gap-1 relative min-w-max">
-                <button class="tab-btn tab-active px-5 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="binder">
-                    Binder PDF
+                <button class="tab-btn tab-active px-5 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="binder_pabrik">
+                    Binder Pabrik
+                </button>
+                <button class="tab-btn tab-inactive px-5 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="binder_depo">
+                    Binder Depo
                 </button>
                 <button class="tab-btn tab-inactive px-5 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="rename_custom">
                     Rename Perpajakan
@@ -104,9 +107,9 @@
             <!-- Left Side: Dropzone & Info -->
             <div class="w-full lg:w-1/2 p-8 lg:p-10 flex flex-col">
                 <div class="mb-6">
-                    <h2 id="mode-title" class="text-2xl font-bold text-navy mb-2">Binder PDF</h2>
+                    <h2 id="mode-title" class="text-2xl font-bold text-navy mb-2">Binder Pabrik</h2>
                     <p id="mode-desc" class="text-slate-500 text-sm leading-relaxed min-h-[40px]">
-                        Menggabungkan PDF berdasarkan ID di awal nama file (urutan 1 s/d 5 beserta variasi titiknya).
+                        Menggabungkan PDF Pabrik berdasarkan ID di awal nama file (urutan lengkap 1 s/d 5 beserta variasi titiknya).
                     </p>
                 </div>
 
@@ -172,15 +175,31 @@
         const modeTitle = document.getElementById('mode-title');
         const modeDesc = document.getElementById('mode-desc');
         
-        let currentMode = 'binder';
+        let currentMode = 'binder_pabrik';
         let selectedFiles = [];
         let finalZip = null;
 
         const modeData = {
-            'binder': { title: 'Binder PDF', desc: 'Menggabungkan PDF berdasarkan ID di awal nama file (urutan 1 s/d 5 beserta variasi titiknya).' },
-            'rename_custom': { title: 'Rename Custom (No-Nama)', desc: 'Membaca isi PDF, mencari nomor dokumen dan nama karyawan/pihak (Contoh format hasil: 428-YANTO.pdf).' },
-            'rename_bt': { title: 'Rename Bukti Transfer', desc: 'Membaca teks isi PDF. Mencari kode BPB dan mengubah nama file menjadi [Angka]..pdf (Contoh: 199..pdf).' },
-            'rename_voucher': { title: 'Rename Voucher / Dokumen', desc: 'Membaca teks isi PDF (atau menggunakan OCR jika dari CamScanner). Mengubah nama file menjadi [Nomor] 1.pdf.' }
+            'binder_pabrik': { 
+                title: 'Binder Pabrik', 
+                desc: 'Menggabungkan PDF Pabrik berdasarkan ID di awal nama file (urutan lengkap 1 s/d 5 beserta variasi titiknya).' 
+            },
+            'binder_depo': { 
+                title: 'Binder Depo', 
+                desc: 'Menggabungkan PDF Depo berdasarkan ID di awal nama file (urutan lengkap 1 s/d 6 beserta variasi titiknya).' 
+            },
+            'rename_custom': { 
+                title: 'Rename Custom (No-Nama)', 
+                desc: 'Membaca isi PDF, mencari nomor dokumen dan nama karyawan/pihak (Contoh format hasil: 428-YANTO.pdf).' 
+            },
+            'rename_bt': { 
+                title: 'Rename Bukti Transfer', 
+                desc: 'Membaca teks isi PDF. Mencari kode BPB dan mengubah nama file menjadi [Angka]..pdf (Contoh: 199..pdf).' 
+            },
+            'rename_voucher': { 
+                title: 'Rename Voucher / Dokumen', 
+                desc: 'Membaca teks isi PDF (atau menggunakan OCR jika dari CamScanner). Mengubah nama file menjadi [Nomor] 1.pdf.' 
+            }
         };
 
         tabBtns.forEach(btn => {
@@ -316,8 +335,10 @@
             finalZip = new JSZip();
 
             try {
-                if (currentMode === 'binder') {
-                    await processBinder();
+                if (currentMode === 'binder_pabrik') {
+                    await processBinder(5); // Urutan wajib 1 sampai 5
+                } else if (currentMode === 'binder_depo') {
+                    await processBinder(6); // Urutan wajib 1 sampai 6
                 } else if (currentMode === 'rename_custom') {
                     await processRenameCustom();
                 } else if (currentMode === 'rename_bt') {
@@ -347,12 +368,11 @@
             }
         });
 
-        async function processBinder() {
+        async function processBinder(maxUrutan) {
             const grupDokumen = {};
-            const nomorWajib = [1, 2, 3, 4, 5];
+            const nomorWajib = Array.from({ length: maxUrutan }, (_, i) => i + 1);
 
             for (const file of selectedFiles) {
-                // Hapus ekstensi .pdf di paling akhir
                 const nameWithoutExt = file.name.replace(/\.pdf$/i, "");
                 const parts = nameWithoutExt.trim().split(/\s+/);
                 
@@ -376,13 +396,13 @@
             }
 
             const idList = Object.keys(grupDokumen);
-            logMessage(`Ditemukan ${idList.length} Nomor File (ID) berbeda.`);
+            logMessage(`Ditemukan ${idList.length} Nomor File (ID) berbeda (Target urutan: 1 s/d ${maxUrutan}).`);
             let berhasil = 0, dilewati = 0;
 
             for (const id of idList) {
                 const daftar_file = grupDokumen[id];
                 
-                // Urutkan berdasarkan nomor (1-5), lalu berdasarkan jumlah titik dari sedikit ke banyak
+                // Urutkan berdasarkan nomor (1 s/d maxUrutan), lalu berdasarkan jumlah titik dari sedikit ke banyak
                 daftar_file.sort((a, b) => {
                     if (a.nomor !== b.nomor) {
                         return a.nomor - b.nomor;
@@ -390,13 +410,11 @@
                     return a.jumlahTitik - b.jumlahTitik;
                 });
 
-                // Cek apakah nomor 1, 2, 3, 4, dan 5 semuanya hadir
                 const nomorTersedia = new Set(daftar_file.map(item => item.nomor));
-                const lengkap1Sampai5 = nomorWajib.every(num => nomorTersedia.has(num));
-                // Pastikan juga tidak ada nomor di luar 1-5 (opsional, hapus baris di bawah jika boleh > 5)
-                const hanya1Sampai5 = daftar_file.every(item => item.nomor >= 1 && item.nomor <= 5);
+                const lengkapSemuaNomor = nomorWajib.every(num => nomorTersedia.has(num));
+                const tidakMelebihiBatas = daftar_file.every(item => item.nomor >= 1 && item.nomor <= maxUrutan);
 
-                if (lengkap1Sampai5 && hanya1Sampai5) {
+                if (lengkapSemuaNomor && tidakMelebihiBatas) {
                     const urutanLabel = daftar_file.map(item => item.akhiran).join(' -> ');
                     logMessage(`Menggabungkan ID ${id} (${urutanLabel})...`);
                     
@@ -419,8 +437,13 @@
                 } else {
                     dilewati++;
                     const kurang = nomorWajib.filter(num => !nomorTersedia.has(num));
-                    const infoKurang = kurang.length > 0 ? ` (Kurang nomor: ${kurang.join(', ')})` : ' (Ada nomor di luar 1-5)';
-                    logMessage(`[DILEWATI] ID ${id} tidak lengkap${infoKurang}`, 'warn');
+                    const lebih = daftar_file.filter(item => item.nomor > maxUrutan).map(item => item.akhiran);
+                    
+                    let alasan = '';
+                    if (kurang.length > 0) alasan += ` (Kurang nomor: ${kurang.join(', ')})`;
+                    if (lebih.length > 0) alasan += ` (Ada nomor > ${maxUrutan}: ${lebih.join(', ')})`;
+                    
+                    logMessage(`[DILEWATI] ID ${id} tidak sesuai kriteria${alasan}`, 'warn');
                 }
             }
             logMessage(`-`.repeat(40));

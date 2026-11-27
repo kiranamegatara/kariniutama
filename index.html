@@ -79,7 +79,7 @@
                 <div class="truncate">
                     <div class="flex items-center gap-2">
                         <h1 class="text-sm sm:text-base font-bold text-slate-900 tracking-tight truncate">PT KARINI UTAMA</h1>
-                        <span class="hidden md:inline-block text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded px-1.5 py-0.5">PRO ENGINE v5.2</span>
+                        <span class="hidden md:inline-block text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded px-1.5 py-0.5">PRO ENGINE v5.3</span>
                     </div>
                     <p class="text-[11px] text-slate-500 truncate">Otomasi, Audit &amp; Pengarsipan Digital SAP</p>
                 </div>
@@ -928,18 +928,26 @@
             }
         }
 
-        // Helper Penanganan Nomor/Nama Duplikat (Anti-Timpa)
-        function getUniquePdfName(baseNameWithoutExt, usedSet) {
+        // Helper Penanganan Nomor/Nama Duplikat (Anti-Timpa) - kompatibel dengan Set maupun Map
+        function getUniquePdfName(baseNameWithoutExt, usedStore) {
+            const isMap = usedStore && typeof usedStore.get === 'function' && typeof usedStore.set === 'function';
+            const hasKey = (k) => isMap ? usedStore.has(k) : usedStore.has(k);
+            const addKey = (k, val = true) => isMap ? usedStore.set(k, val) : usedStore.add(k);
+
             let candidate = `${baseNameWithoutExt}.pdf`;
-            if (!usedSet.has(candidate.toLowerCase())) {
-                usedSet.add(candidate.toLowerCase());
+            const lowerCandidate = candidate.toLowerCase();
+            if (!hasKey(lowerCandidate)) {
+                addKey(lowerCandidate, 1);
                 return { filename: candidate, isDuplicate: false };
             }
-            let counter = 2;
+
+            let counter = isMap ? Math.max(2, (usedStore.get(lowerCandidate) || 1) + 1) : 2;
             while (true) {
                 candidate = `${baseNameWithoutExt} (${counter}).pdf`;
-                if (!usedSet.has(candidate.toLowerCase())) {
-                    usedSet.add(candidate.toLowerCase());
+                const lowerDup = candidate.toLowerCase();
+                if (!hasKey(lowerDup)) {
+                    addKey(lowerDup, counter);
+                    if (isMap) usedStore.set(lowerCandidate, counter);
                     return { filename: candidate, isDuplicate: true, dupIndex: counter };
                 }
                 counter++;
@@ -970,16 +978,21 @@
         function parseBpbNumberDepo(rawText) {
             if (!rawText) return null;
             const clean = rawText.replace(/\s+/g, " ");
-            const bpbMatch = clean.match(/BPB\s*(?:NO\.?|NOMOR)?\s*[:;\-]?\s*([0-9OIl]{1,6})(?=\s*\/|\s|$|[^0-9])/i);
+            // Pola 1: BPB / BPB NO / BPB NOMOR / BPB-150 / BPB/150
+            const bpbMatch = clean.match(/\bBPB\b\s*(?:NO\.?|NOMOR|NR)?\s*[:;\-\/]?\s*([0-9OIl]{1,6})(?=\s*\/|\s|,|;|\)|$)/i);
             if (bpbMatch) {
                 const fixedDigits = bpbMatch[1].replace(/O/gi, "0").replace(/[Il]/g, "1");
                 if (/^\d+$/.test(fixedDigits)) {
                     return String(parseInt(fixedDigits, 10));
                 }
             }
-            const remarkMatch = clean.match(/Remark\s*[:;\-]?\s*.*?BPB\s*(?:NO\.?)?\s*(\d+)/i);
+            // Pola 2: Remark ... BPB ... angka
+            const remarkMatch = clean.match(/Remark\s*[:;\-]?\s*.*?\bBPB\b\s*(?:NO\.?)?\s*[:;\-\/]?\s*([0-9OIl]{1,6})/i);
             if (remarkMatch) {
-                return String(parseInt(remarkMatch[1], 10));
+                const fixedDigits = remarkMatch[1].replace(/O/gi, "0").replace(/[Il]/g, "1");
+                if (/^\d+$/.test(fixedDigits)) {
+                    return String(parseInt(fixedDigits, 10));
+                }
             }
             return null;
         }

@@ -1,27 +1,35 @@
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PT Karini Utama - PDF Tools & Auto Rename</title>
+    <title>PT Karini Utama — Sistem Otomasi &amp; Pengarsipan Digital Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        navy: '#123B8F',
-                        navydark: '#0e2d6b',
-                        yellow: '#FFD900',
-                        yellowdark: '#e6c300'
+                        brand: {
+                            DEFAULT: '#167B43',
+                            dark: '#105D32',
+                            light: '#EBF5EF',
+                            soft: '#F4FAF6'
+                        },
+                        depo: {
+                            DEFAULT: '#0F766E',
+                            dark: '#115E59',
+                            light: '#F0FDFA'
+                        }
                     }
                 }
             }
         }
     </script>
-    <!-- PDF-Lib for merging & splitting -->
+    <!-- PDF-Lib for merging, splitting, stamping -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <!-- PDF.js for text extraction -->
+    <!-- PDF.js for text extraction & preview -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <!-- JSZip for packaging output -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -31,407 +39,1122 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        .font-mono-code { font-family: 'JetBrains Mono', monospace; }
         
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        #log-area::-webkit-scrollbar-thumb { background: #475569; }
-        #log-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        #log-area::-webkit-scrollbar-thumb { background: #334155; }
+        #log-area::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-        .glass-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            box-shadow: 0 10px 40px -10px rgba(18, 59, 143, 0.08);
+        .drag-over-pabrik {
+            border-color: #167B43 !important;
+            background-color: #F4FAF6 !important;
+            transform: scale(0.995);
         }
-
-        .drag-over { 
-            border-color: #123B8F !important; 
-            background-color: rgba(18, 59, 143, 0.04) !important; 
-            transform: scale(1.01);
+        .drag-over-depo {
+            border-color: #0F766E !important;
+            background-color: #F0FDFA !important;
+            transform: scale(0.995);
         }
         
-        .tab-active {
-            background-color: #123B8F;
-            color: #FFD900;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(18, 59, 143, 0.15);
+        @keyframes pulseSubtle {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
         }
-        .tab-inactive {
-            color: #64748b;
-        }
-        .tab-inactive:hover {
-            color: #123B8F;
-            background-color: #f1f5f9;
-        }
+        .live-dot { animation: pulseSubtle 1.4s infinite; }
     </style>
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-800 flex flex-col selection:bg-yellow selection:text-navy">
+<body class="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col antialiased selection:bg-[#167B43]/15 selection:text-[#105D32]">
 
-    <header class="bg-white shadow-sm relative z-50">
-        <div class="w-full h-1 bg-gradient-to-r from-navy via-yellow to-navy"></div>
-        <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-center relative">
-            <h1 class="text-xl md:text-2xl font-bold text-navy tracking-wide">PT KARINI UTAMA</h1>
-        </div>
-    </header>
-
-    <main class="flex-grow max-w-6xl mx-auto px-4 py-10 w-full flex flex-col gap-8">
-        
-        <!-- Tab Menu Navigasi (Diletakkan di Atas) -->
-        <div class="flex justify-center w-full overflow-x-auto pb-2">
-            <div class="bg-white p-1.5 rounded-full shadow-sm border border-slate-200 flex flex-nowrap gap-1 relative min-w-max">
-                <button class="tab-btn tab-active px-4 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="split_voucher">
-                    Split & Rename Voucher
-                </button>
-                <button class="tab-btn tab-inactive px-4 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="binder_pabrik">
-                    Binder Pabrik
-                </button>
-                <button class="tab-btn tab-inactive px-4 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="binder_depo">
-                    Binder Depo
-                </button>
-                <button class="tab-btn tab-inactive px-4 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="rename_custom">
-                    Rename Perpajakan
-                </button>
-                <button class="tab-btn tab-inactive px-4 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="rename_bt">
-                    Rename Bukti Transfer
-                </button>
-                <button class="tab-btn tab-inactive px-4 py-2.5 rounded-full text-xs md:text-sm transition-all duration-300" data-mode="rename_voucher">
-                    Rename Voucher
-                </button>
-            </div>
-        </div>
-
-        <div class="glass-card rounded-3xl overflow-hidden flex flex-col lg:flex-row min-h-[500px]">
-            
-            <!-- Left Side: Dropzone & Info -->
-            <div class="w-full lg:w-1/2 p-8 lg:p-10 flex flex-col">
-                <div class="mb-6">
-                    <h2 id="mode-title" class="text-2xl font-bold text-navy mb-2">Split & Rename Voucher</h2>
-                    <p id="mode-desc" class="text-slate-500 text-sm leading-relaxed min-h-[40px]">
-                        Memisahkan PDF voucher gabungan menjadi file satuan per halaman, lalu otomatis menamainya sesuai Nomor Dokumen (Contoh: 2100008321 1.pdf).
-                    </p>
-                </div>
-
-                <div id="drop-zone" class="flex-grow border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 cursor-pointer hover:border-navy group min-h-[250px] p-6 relative overflow-hidden bg-slate-50/50">
-                    <div class="bg-white p-4 rounded-full mb-4 text-navy shadow-sm border border-slate-100 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+    <!-- Top Navigation Bar -->
+    <header class="bg-white border-b border-slate-200/80 sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <img src="data:image/png;base64,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" alt="Logo PT Karini Utama" class="w-9 h-9 rounded-lg object-contain shrink-0 border border-slate-200/80 bg-[#EFF3F8] p-0.5">
+                <div class="truncate">
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-sm sm:text-base font-bold text-slate-900 tracking-tight truncate">PT KARINI UTAMA</h1>
+                        <span class="hidden md:inline-block text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded px-1.5 py-0.5">PRO ENGINE v5.2</span>
                     </div>
-                    <p class="text-slate-600 font-medium text-center z-10">Drag & Drop file PDF ke sini<br><span class="text-sm font-normal text-slate-400">atau klik untuk memilih file</span></p>
-                    <input type="file" id="file-input" multiple accept=".pdf" class="hidden">
-                    
-                    <div id="file-count" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-navy text-yellow text-xs font-bold px-4 py-1.5 rounded-full shadow-md hidden opacity-0 transition-opacity duration-300">
-                        0 File Terpilih
-                    </div>
+                    <p class="text-[11px] text-slate-500 truncate">Otomasi, Audit &amp; Pengarsipan Digital SAP</p>
                 </div>
-
-                <button id="btn-process" class="w-full mt-6 bg-navy hover:bg-navydark text-white font-semibold py-4 rounded-xl shadow-lg shadow-navy/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 transform active:scale-[0.98]">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" />
-                    </svg>
-                    Jalankan Proses
-                </button>
             </div>
 
-            <!-- Right Side: Terminal -->
-            <div class="w-full lg:w-1/2 bg-[#0B1120] text-slate-300 flex flex-col relative">
-                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-[#0F172A]">
-                    <div class="flex gap-2">
-                        <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
-                        <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                        <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
-                    </div>
-                    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Terminal Log</span>
-                    <button id="btn-clear-log" class="text-xs text-slate-400 hover:text-white transition-colors">Bersihkan</button>
-                </div>
-                
-                <div id="log-area" class="flex-grow p-6 font-mono text-sm overflow-y-auto leading-relaxed h-[300px] lg:h-auto whitespace-pre-wrap pb-24">
-                    <div class="text-slate-500">Menunggu input file...</div>
-                </div>
+            <div class="flex items-center gap-2.5 shrink-0">
+                <!-- Quick History Button -->
+                <button type="button" id="btn-open-history" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 transition-colors" title="Riwayat Proses Sesi Ini">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Riwayat (<span id="history-count">0</span>)</span>
+                </button>
 
-                <!-- Floating Download Button -->
-                <div class="absolute bottom-6 right-6 left-6 flex justify-end pointer-events-none">
-                    <button id="btn-download" class="pointer-events-auto hidden bg-yellow hover:bg-yellowdark text-navy font-bold py-3 px-6 rounded-xl shadow-[0_8px_30px_rgba(255,217,0,0.25)] transition-all duration-300 flex items-center gap-2 transform hover:-translate-y-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                        Unduh Hasil (ZIP)
+                <!-- Segmented System Switcher -->
+                <div class="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200/70" role="tablist">
+                    <button type="button" id="switch-pabrik" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 bg-white text-[#167B43] shadow-sm flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#167B43]"></span>
+                        <span>Pabrik</span>
+                    </button>
+                    <button type="button" id="switch-depo" class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 text-slate-500 hover:text-slate-800 flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-teal-600/60"></span>
+                        <span>Depo</span>
                     </button>
                 </div>
             </div>
         </div>
+    </header>
+
+    <main class="flex-grow max-w-6xl mx-auto px-4 sm:px-6 py-5 w-full flex flex-col gap-4">
+        
+        <!-- Feature Pills Bar -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 p-2 shadow-2xs">
+            <!-- Tabs Pabrik -->
+            <div id="menu-pabrik" class="flex flex-wrap gap-1.5">
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-semibold transition-all bg-[#167B43] text-white shadow-xs" data-system="PABRIK" data-mode="split_voucher">
+                    1. Split &amp; Rename Voucher
+                </button>
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100" data-system="PABRIK" data-mode="binder_pabrik">
+                    2. Binder Pabrik
+                </button>
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100" data-system="PABRIK" data-mode="rename_custom">
+                    3. Rename Perpajakan
+                </button>
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100" data-system="PABRIK" data-mode="rename_bt">
+                    4. Rename Bukti Transfer
+                </button>
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100" data-system="PABRIK" data-mode="rename_voucher">
+                    5. Rename Voucher
+                </button>
+            </div>
+
+            <!-- Tabs Depo -->
+            <div id="menu-depo" class="hidden flex-wrap gap-1.5">
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100" data-system="DEPO" data-mode="split_voucher_depo">
+                    1. Split &amp; Rename Voucher Depo
+                </button>
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100" data-system="DEPO" data-mode="binder_depo">
+                    2. Binder Depo
+                </button>
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100" data-system="DEPO" data-mode="rename_bt_depo">
+                    3. Rename Bukti Transfer Depo
+                </button>
+                <button type="button" class="mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100" data-system="DEPO" data-mode="rename_voucher_depo">
+                    4. Rename Voucher Depo
+                </button>
+            </div>
+        </div>
+
+        <!-- Workspace Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            
+            <!-- Left Panel: Input, Smart Options & Execution -->
+            <section class="lg:col-span-6 bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 flex flex-col justify-between shadow-2xs">
+                <div>
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <div class="flex items-center gap-2">
+                            <span id="system-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#EBF5EF] text-[#167B43]">
+                                SISTEM PABRIK
+                            </span>
+                            <span id="auto-detect-hint" class="hidden text-[11px] text-amber-600 font-medium"></span>
+                        </div>
+                        <span class="text-[11px] text-slate-400 font-mono-code">Ctrl + Enter</span>
+                    </div>
+                    <h2 id="mode-title" class="text-lg font-bold text-slate-900">Split &amp; Rename Voucher</h2>
+                    <p id="mode-desc" class="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+                        Memisahkan PDF voucher gabungan Pabrik menjadi file satuan per halaman, lalu otomatis menamainya sesuai Nomor Dokumen (Contoh: 2100008321 1.pdf).
+                    </p>
+                </div>
+
+                <!-- Dropzone -->
+                <div id="drop-zone" class="my-4 border-2 border-dashed border-slate-200 hover:border-[#167B43] rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-150 bg-slate-50/50 min-h-[165px] group">
+                    <div id="drop-icon" class="w-10 h-10 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center text-[#167B43] mb-2.5 group-hover:scale-105 transition-transform shadow-2xs">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                    </div>
+                    <p class="text-sm font-semibold text-slate-700">Tarik file atau folder PDF ke sini, atau <span id="drop-browse-text" class="text-[#167B43] underline underline-offset-2">pilih file</span></p>
+                    <p class="text-[11px] text-slate-400 mt-1">Mendukung batch ratusan PDF &bull; Auto-OCR untuk dokumen hasil scan</p>
+                    <input type="file" id="file-input" multiple accept=".pdf" class="hidden">
+                </div>
+
+                <!-- Smart Pre-Flight & Options Bar -->
+                <div class="mb-4 flex flex-wrap items-center justify-between gap-2 bg-slate-50/90 border border-slate-200/70 rounded-xl px-3.5 py-2.5 text-xs">
+                    <label class="inline-flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
+                        <input type="checkbox" id="opt-include-csv" checked class="rounded border-slate-300 text-[#167B43] focus:ring-[#167B43]">
+                        <span>Sertakan Rekap Audit (.CSV) di ZIP</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium" title="Pisahkan file yang gagal terbaca ke dalam sub-folder khusus di dalam ZIP">
+                        <input type="checkbox" id="opt-separate-failed" checked class="rounded border-slate-300 text-[#167B43] focus:ring-[#167B43]">
+                        <span>Pisahkan Folder Gagal</span>
+                    </label>
+                </div>
+
+                <!-- Compact File Queue Summary + Collapsible Preview -->
+                <div id="queue-box" class="hidden mb-4 border border-slate-200/80 rounded-xl bg-slate-50/70 overflow-hidden">
+                    <div class="px-3.5 py-2.5 flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span id="queue-badge" class="px-2 py-0.5 rounded-md bg-[#167B43] text-white font-semibold shrink-0">0 File</span>
+                            <span id="queue-size" class="text-slate-500 truncate">0 KB</span>
+                        </div>
+                        <div class="flex items-center gap-3 shrink-0">
+                            <button type="button" id="btn-toggle-list" class="text-slate-600 hover:text-slate-900 font-medium">Lihat Daftar</button>
+                            <button type="button" id="btn-clear-files" class="text-rose-600 hover:text-rose-700 font-medium">Hapus</button>
+                        </div>
+                    </div>
+                    <div id="file-list-drawer" class="hidden max-h-32 overflow-y-auto border-t border-slate-200/80 bg-white divide-y divide-slate-100 text-xs"></div>
+                </div>
+
+                <!-- Progress Bar with ETA & Speed -->
+                <div id="progress-wrapper" class="hidden mb-4">
+                    <div class="flex items-center justify-between text-xs mb-1.5 gap-2">
+                        <span id="progress-label" class="text-slate-600 font-medium truncate">Memproses...</span>
+                        <div class="flex items-center gap-2 shrink-0 font-mono-code text-[11px]">
+                            <span id="progress-eta" class="text-slate-400"></span>
+                            <span id="progress-percent" class="font-semibold text-[#167B43]">0%</span>
+                        </div>
+                    </div>
+                    <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div id="progress-bar" class="h-full bg-[#167B43] rounded-full transition-all duration-200" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <button id="btn-process" type="button" class="flex-1 bg-[#167B43] hover:bg-[#105D32] text-white font-semibold text-sm py-3 px-4 rounded-xl transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-xs">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>Jalankan Proses</span>
+                    </button>
+
+                    <!-- Cancel Button (Muncul saat proses berjalan) -->
+                    <button id="btn-cancel" type="button" class="hidden bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm py-3 px-4 rounded-xl transition-all duration-150 items-center justify-center gap-1.5 shadow-xs">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        <span>Batal</span>
+                    </button>
+
+                    <!-- Inspect & Download Results -->
+                    <button id="btn-inspect" type="button" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm py-3 px-3.5 rounded-xl transition-all duration-150 items-center justify-center gap-1.5 border border-slate-200" title="Pratinjau & Edit Nama Hasil Sebelum Unduh">
+                        <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        <span>Pratinjau</span>
+                    </button>
+
+                    <button id="btn-download" type="button" class="hidden sm:flex-1 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm py-3 px-4 rounded-xl transition-all duration-150 items-center justify-center gap-2 shadow-xs">
+                        <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        <span id="btn-download-label" class="truncate">Unduh ZIP</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Right Panel: Smart Interactive Terminal & Audit Console -->
+            <section class="lg:col-span-6 bg-[#0F172A] text-slate-300 rounded-2xl border border-slate-800 flex flex-col h-[480px] lg:h-[540px] relative overflow-hidden shadow-2xs">
+                <!-- Header -->
+                <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 bg-[#111C33] shrink-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span id="status-indicator" class="w-2 h-2 rounded-full bg-slate-500 shrink-0"></span>
+                        <span class="text-xs font-semibold text-slate-200 tracking-wide truncate">Konsol Audit</span>
+                        <span id="status-text" class="text-[10px] font-mono-code text-slate-400 uppercase shrink-0">Siap</span>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <!-- Search in Log -->
+                        <div class="relative hidden sm:block">
+                            <input type="text" id="log-search" placeholder="Cari nomor..." class="bg-slate-800/90 text-slate-200 placeholder-slate-500 text-[11px] rounded-lg pl-2.5 pr-2 py-1 border border-slate-700 w-28 focus:w-36 transition-all focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <!-- Filter Log -->
+                        <select id="log-filter" class="bg-slate-800/90 text-slate-300 text-[11px] rounded-lg px-2 py-1 border border-slate-700 focus:outline-none">
+                            <option value="ALL">Semua</option>
+                            <option value="ERROR_ONLY">Gagal/Lewat</option>
+                            <option value="SUCCESS_ONLY">Sukses</option>
+                        </select>
+                        <button id="btn-copy-log" type="button" class="text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition-colors">
+                            Salin
+                        </button>
+                        <button id="btn-clear-log" type="button" class="text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition-colors">
+                            Hapus
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Compact Counters + Elapsed Time -->
+                <div class="grid grid-cols-4 border-b border-slate-800/80 bg-[#0B1221] px-4 py-2 text-[11px] font-mono-code shrink-0">
+                    <div class="text-slate-400">TOTAL: <span id="stat-total" class="text-white font-semibold">0</span></div>
+                    <div class="text-center text-emerald-400">SUKSES: <span id="stat-success" class="font-semibold">0</span></div>
+                    <div class="text-center text-amber-400">GAGAL: <span id="stat-fail" class="font-semibold">0</span></div>
+                    <div class="text-right text-slate-400">WAKTU: <span id="stat-time" class="text-slate-200">0.0s</span></div>
+                </div>
+
+                <!-- Auto-Scrollable Log Area -->
+                <div id="log-area" class="flex-1 min-h-0 p-4 font-mono-code text-xs leading-relaxed overflow-y-auto overflow-x-hidden whitespace-pre-wrap">
+                    <div class="text-slate-500">[SISTEM PABRIK] Mode aktif: Split &amp; Rename Voucher. Menunggu input file...</div>
+                </div>
+
+                <!-- Jump to Bottom Pill -->
+                <button id="btn-scroll-bottom" type="button" class="hidden absolute bottom-4 right-4 z-20 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 text-[11px] font-medium px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 transition-all">
+                    <span>Terbaru</span>
+                    <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+                </button>
+            </section>
+
+        </div>
     </main>
+
+    <!-- Modal Pratinjau & Koreksi Manual Hasil (Sebelum Unduh ZIP) -->
+    <div id="inspect-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">Pratinjau &amp; Koreksi Hasil</h3>
+                    <p class="text-xs text-slate-500">Anda dapat mengedit nama file hasil (terutama yang gagal terbaca OCR) sebelum mengunduh ZIP.</p>
+                </div>
+                <button type="button" id="btn-close-inspect" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 text-xs">
+                <input type="text" id="inspect-search" placeholder="Cari nama file hasil..." class="bg-white border border-slate-200 rounded-lg px-3 py-1.5 w-64 focus:outline-none focus:border-[#167B43]">
+                <span id="inspect-summary" class="text-slate-500 font-medium">0 file siap dikemas</span>
+            </div>
+            <div id="inspect-list" class="flex-1 overflow-y-auto divide-y divide-slate-100 p-2"></div>
+            <div class="px-5 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2.5">
+                <button type="button" id="btn-close-inspect-2" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/70">Tutup</button>
+                <button type="button" id="btn-save-and-download" class="px-4 py-2 rounded-xl text-xs font-semibold bg-[#167B43] hover:bg-[#105D32] text-white flex items-center gap-1.5 shadow-xs">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    <span>Simpan Perubahan &amp; Unduh ZIP</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Riwayat Sesi -->
+    <div id="history-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full max-h-[80vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">Riwayat Proses Sesi Ini</h3>
+                    <p class="text-xs text-slate-500">Catatan aktivitas pemrosesan dokumen selama halaman ini dibuka.</p>
+                </div>
+                <button type="button" id="btn-close-history" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div id="history-list" class="flex-1 overflow-y-auto divide-y divide-slate-100 p-4 text-xs">
+                <p class="text-slate-400 text-center py-8">Belum ada riwayat pemrosesan pada sesi ini.</p>
+            </div>
+        </div>
+    </div>
 
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const fileCountDisplay = document.getElementById('file-count');
-        const btnProcess = document.getElementById('btn-process');
-        const btnDownload = document.getElementById('btn-download');
-        const logArea = document.getElementById('log-area');
-        const btnClearLog = document.getElementById('btn-clear-log');
-        const tabBtns = document.querySelectorAll('.tab-btn');
-        
+        // DOM Elements
+        const switchPabrik = document.getElementById('switch-pabrik');
+        const switchDepo = document.getElementById('switch-depo');
+        const menuPabrik = document.getElementById('menu-pabrik');
+        const menuDepo = document.getElementById('menu-depo');
+        const modePills = document.querySelectorAll('.mode-pill');
+
+        const systemBadge = document.getElementById('system-badge');
+        const autoDetectHint = document.getElementById('auto-detect-hint');
         const modeTitle = document.getElementById('mode-title');
         const modeDesc = document.getElementById('mode-desc');
-        
+
+        const dropZone = document.getElementById('drop-zone');
+        const dropIcon = document.getElementById('drop-icon');
+        const dropBrowseText = document.getElementById('drop-browse-text');
+        const fileInput = document.getElementById('file-input');
+
+        const optIncludeCsv = document.getElementById('opt-include-csv');
+        const optSeparateFailed = document.getElementById('opt-separate-failed');
+
+        const queueBox = document.getElementById('queue-box');
+        const queueBadge = document.getElementById('queue-badge');
+        const queueSize = document.getElementById('queue-size');
+        const btnToggleList = document.getElementById('btn-toggle-list');
+        const btnClearFiles = document.getElementById('btn-clear-files');
+        const fileListDrawer = document.getElementById('file-list-drawer');
+
+        const progressWrapper = document.getElementById('progress-wrapper');
+        const progressLabel = document.getElementById('progress-label');
+        const progressEta = document.getElementById('progress-eta');
+        const progressPercent = document.getElementById('progress-percent');
+        const progressBar = document.getElementById('progress-bar');
+
+        const btnProcess = document.getElementById('btn-process');
+        const btnCancel = document.getElementById('btn-cancel');
+        const btnInspect = document.getElementById('btn-inspect');
+        const btnDownload = document.getElementById('btn-download');
+        const btnDownloadLabel = document.getElementById('btn-download-label');
+
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        const logSearch = document.getElementById('log-search');
+        const logFilter = document.getElementById('log-filter');
+        const btnCopyLog = document.getElementById('btn-copy-log');
+        const btnClearLog = document.getElementById('btn-clear-log');
+        const logArea = document.getElementById('log-area');
+        const btnScrollBottom = document.getElementById('btn-scroll-bottom');
+
+        const statTotal = document.getElementById('stat-total');
+        const statSuccess = document.getElementById('stat-success');
+        const statFail = document.getElementById('stat-fail');
+        const statTime = document.getElementById('stat-time');
+
+        // Modals
+        const inspectModal = document.getElementById('inspect-modal');
+        const btnCloseInspect = document.getElementById('btn-close-inspect');
+        const btnCloseInspect2 = document.getElementById('btn-close-inspect-2');
+        const inspectSearch = document.getElementById('inspect-search');
+        const inspectSummary = document.getElementById('inspect-summary');
+        const inspectList = document.getElementById('inspect-list');
+        const btnSaveAndDownload = document.getElementById('btn-save-and-download');
+
+        const btnOpenHistory = document.getElementById('btn-open-history');
+        const historyCount = document.getElementById('history-count');
+        const historyModal = document.getElementById('history-modal');
+        const btnCloseHistory = document.getElementById('btn-close-history');
+        const historyList = document.getElementById('history-list');
+
+        // State
+        let currentSystem = 'PABRIK';
         let currentMode = 'split_voucher';
         let selectedFiles = [];
-        let finalZip = null;
+        let generatedResults = [];
+        let finalZipName = 'Hasil_PABRIK_split_voucher.zip';
+        let autoScrollEnabled = true;
+        let isCancelled = false;
+        let processStartTime = 0;
+        let timerInterval = null;
+        let sessionHistory = [];
+        let sharedOcrWorker = null;
 
         const modeData = {
             'split_voucher': {
+                system: 'PABRIK',
                 title: 'Split & Rename Voucher',
-                desc: 'Memisahkan PDF voucher gabungan menjadi file satuan per halaman, lalu otomatis menamainya sesuai Nomor Dokumen (Contoh: 2100008321 1.pdf).'
+                desc: 'Memisahkan PDF voucher gabungan Pabrik menjadi file satuan per halaman, lalu otomatis menamainya sesuai Nomor Dokumen (Contoh: 2100008321 1.pdf).'
             },
             'binder_pabrik': { 
+                system: 'PABRIK',
                 title: 'Binder Pabrik', 
                 desc: 'Menggabungkan PDF Pabrik berdasarkan ID di awal nama file (urutan lengkap 1 s/d 5 beserta variasi titiknya).' 
             },
+            'rename_custom': { 
+                system: 'PABRIK',
+                title: 'Rename Perpajakan', 
+                desc: 'Membaca isi PDF perpajakan Pabrik, mencari nomor dokumen dan nama karyawan/pihak (Contoh format hasil: 428-YANTO.pdf).' 
+            },
+            'rename_bt': { 
+                system: 'PABRIK',
+                title: 'Rename Bukti Transfer', 
+                desc: 'Membaca teks isi PDF Bukti Transfer Pabrik. Mencari kode BPB dan mengubah nama file menjadi [Angka]..pdf (Contoh: 199..pdf).' 
+            },
+            'rename_voucher': { 
+                system: 'PABRIK',
+                title: 'Rename Voucher', 
+                desc: 'Membaca teks isi PDF voucher satuan Pabrik (atau menggunakan OCR jika dari CamScanner). Mengubah nama file menjadi [Nomor] 1.pdf.' 
+            },
+            'split_voucher_depo': {
+                system: 'DEPO',
+                title: 'Split & Rename Voucher Depo',
+                desc: 'Memisahkan PDF voucher gabungan Depo menjadi file satuan per halaman (dengan OCR otomatis jika hasil scan CamScanner), lalu menamainya sesuai Nomor Dokumen Depo (Contoh: 2100008321 1.pdf).'
+            },
             'binder_depo': { 
+                system: 'DEPO',
                 title: 'Binder Depo', 
                 desc: 'Menggabungkan PDF Depo berdasarkan ID di awal nama file (urutan lengkap 1 s/d 6 beserta variasi titiknya).' 
             },
-            'rename_custom': { 
-                title: 'Rename Custom (No-Nama)', 
-                desc: 'Membaca isi PDF, mencari nomor dokumen dan nama karyawan/pihak (Contoh format hasil: 428-YANTO.pdf).' 
+            'rename_bt_depo': {
+                system: 'DEPO',
+                title: 'Rename Bukti Transfer Depo',
+                desc: 'Membaca kolom Remark (BPB No.) dari isi PDF bukti transfer Depo (dengan OCR otomatis jika hasil scan). Mengubah nama file menjadi nomor BPB saja seperti 150.pdf.'
             },
-            'rename_bt': { 
-                title: 'Rename Bukti Transfer', 
-                desc: 'Membaca teks isi PDF. Mencari kode BPB dan mengubah nama file menjadi [Angka]..pdf (Contoh: 199..pdf).' 
-            },
-            'rename_voucher': { 
-                title: 'Rename Voucher / Dokumen', 
-                desc: 'Membaca teks isi PDF satuan (atau menggunakan OCR jika dari CamScanner). Mengubah nama file menjadi [Nomor] 1.pdf.' 
+            'rename_voucher_depo': {
+                system: 'DEPO',
+                title: 'Rename Voucher Depo',
+                desc: 'Membaca teks isi PDF satuan Depo (atau menggunakan OCR otomatis jika hasil scan CamScanner). Mengubah nama file khusus Depo menjadi [Nomor Dokumen] 1.pdf.'
             }
         };
 
-        tabBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                tabBtns.forEach(b => {
-                    b.classList.remove('tab-active');
-                    b.classList.add('tab-inactive');
-                });
-                btn.classList.remove('tab-inactive');
-                btn.classList.add('tab-active');
-                
-                currentMode = btn.dataset.mode;
-                modeTitle.textContent = modeData[currentMode].title;
-                modeDesc.textContent = modeData[currentMode].desc;
-                
-                selectedFiles = [];
-                updateFileCount();
-                logArea.innerHTML = `<div class="text-slate-500">Mode diubah ke ${modeData[currentMode].title}. Menunggu input...</div>`;
-                btnDownload.classList.add('hidden');
+        // Shared Tesseract Worker
+        async function getOcrWorker() {
+            if (!sharedOcrWorker) {
+                sharedOcrWorker = await Tesseract.createWorker('eng');
+            }
+            return sharedOcrWorker;
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // Auto-scroll terminal logic
+        logArea.addEventListener('scroll', () => {
+            const dist = logArea.scrollHeight - logArea.scrollTop - logArea.clientHeight;
+            if (dist <= 40) {
+                autoScrollEnabled = true;
+                btnScrollBottom.classList.add('hidden');
+            } else {
+                autoScrollEnabled = false;
+                btnScrollBottom.classList.remove('hidden');
+            }
+        });
+
+        btnScrollBottom.addEventListener('click', () => {
+            autoScrollEnabled = true;
+            btnScrollBottom.classList.add('hidden');
+            scrollToLogBottom(true);
+        });
+
+        function scrollToLogBottom(force = false) {
+            if (!autoScrollEnabled && !force) return;
+            requestAnimationFrame(() => {
+                logArea.scrollTop = logArea.scrollHeight;
             });
+        }
+
+        function startTimer() {
+            processStartTime = performance.now();
+            statTime.textContent = '0.0s';
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                const elapsed = (performance.now() - processStartTime) / 1000;
+                statTime.textContent = `${elapsed.toFixed(1)}s`;
+            }, 100);
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+            if (processStartTime > 0) {
+                const elapsed = (performance.now() - processStartTime) / 1000;
+                statTime.textContent = `${elapsed.toFixed(1)}s`;
+            }
+        }
+
+        function setTerminalState(state) {
+            if (state === 'RUNNING') {
+                statusIndicator.className = 'w-2 h-2 rounded-full bg-amber-400 live-dot shrink-0';
+                statusText.textContent = 'Memproses';
+                statusText.className = 'text-[10px] font-mono-code text-amber-400 uppercase shrink-0';
+            } else if (state === 'DONE') {
+                statusIndicator.className = 'w-2 h-2 rounded-full bg-emerald-400 shrink-0';
+                statusText.textContent = 'Selesai';
+                statusText.className = 'text-[10px] font-mono-code text-emerald-400 uppercase shrink-0';
+            } else if (state === 'CANCELLED') {
+                statusIndicator.className = 'w-2 h-2 rounded-full bg-rose-400 shrink-0';
+                statusText.textContent = 'Dibatalkan';
+                statusText.className = 'text-[10px] font-mono-code text-rose-400 uppercase shrink-0';
+            } else {
+                statusIndicator.className = 'w-2 h-2 rounded-full bg-slate-500 shrink-0';
+                statusText.textContent = 'Siap';
+                statusText.className = 'text-[10px] font-mono-code text-slate-400 uppercase shrink-0';
+            }
+        }
+
+        function updateStats(total, success, fail) {
+            statTotal.textContent = total;
+            statSuccess.textContent = success;
+            statFail.textContent = fail;
+        }
+
+        function updateProgress(current, total, labelText) {
+            if (total <= 0) {
+                progressWrapper.classList.add('hidden');
+                return;
+            }
+            progressWrapper.classList.remove('hidden');
+            const pct = Math.min(100, Math.round((current / total) * 100));
+            progressLabel.textContent = labelText;
+            progressPercent.textContent = `${pct}%`;
+            progressBar.style.width = `${pct}%`;
+
+            if (current > 0 && current < total && processStartTime > 0) {
+                const elapsedSec = (performance.now() - processStartTime) / 1000;
+                const rate = current / elapsedSec;
+                const remainingSec = Math.max(1, Math.round((total - current) / rate));
+                progressEta.textContent = `~${remainingSec}d tersisa`;
+            } else if (current >= total) {
+                progressEta.textContent = 'Selesai';
+            } else {
+                progressEta.textContent = '';
+            }
+        }
+
+        function applySystemTheme(system) {
+            const isDepo = system === 'DEPO';
+            if (isDepo) {
+                switchDepo.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 bg-white text-teal-700 shadow-sm flex items-center gap-1.5';
+                switchPabrik.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 text-slate-500 hover:text-slate-800 flex items-center gap-1.5';
+                menuPabrik.classList.add('hidden');
+                menuDepo.classList.remove('hidden');
+                menuDepo.classList.add('flex');
+
+                systemBadge.textContent = 'SISTEM DEPO';
+                systemBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-teal-50 text-teal-700';
+                dropZone.classList.remove('hover:border-[#167B43]');
+                dropZone.classList.add('hover:border-teal-600');
+                dropIcon.classList.remove('text-[#167B43]');
+                dropIcon.classList.add('text-teal-700');
+                dropBrowseText.className = 'text-teal-700 underline underline-offset-2';
+                queueBadge.className = 'px-2 py-0.5 rounded-md bg-teal-700 text-white font-semibold shrink-0';
+                progressPercent.className = 'font-semibold text-teal-700';
+                progressBar.className = 'h-full bg-teal-600 rounded-full transition-all duration-200';
+                btnProcess.className = 'flex-1 bg-teal-700 hover:bg-teal-800 text-white font-semibold text-sm py-3 px-4 rounded-xl transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-xs';
+            } else {
+                switchPabrik.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 bg-white text-[#167B43] shadow-sm flex items-center gap-1.5';
+                switchDepo.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 text-slate-500 hover:text-slate-800 flex items-center gap-1.5';
+                menuDepo.classList.add('hidden');
+                menuDepo.classList.remove('flex');
+                menuPabrik.classList.remove('hidden');
+
+                systemBadge.textContent = 'SISTEM PABRIK';
+                systemBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#EBF5EF] text-[#167B43]';
+                dropZone.classList.remove('hover:border-teal-600');
+                dropZone.classList.add('hover:border-[#167B43]');
+                dropIcon.classList.remove('text-teal-700');
+                dropIcon.classList.add('text-[#167B43]');
+                dropBrowseText.className = 'text-[#167B43] underline underline-offset-2';
+                queueBadge.className = 'px-2 py-0.5 rounded-md bg-[#167B43] text-white font-semibold shrink-0';
+                progressPercent.className = 'font-semibold text-[#167B43]';
+                progressBar.className = 'h-full bg-[#167B43] rounded-full transition-all duration-200';
+                btnProcess.className = 'flex-1 bg-[#167B43] hover:bg-[#105D32] text-white font-semibold text-sm py-3 px-4 rounded-xl transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-xs';
+            }
+        }
+
+        function activateMode(modeKey) {
+            currentMode = modeKey;
+            currentSystem = modeData[modeKey].system;
+            applySystemTheme(currentSystem);
+
+            modePills.forEach(pill => {
+                const isTarget = pill.dataset.mode === modeKey;
+                if (isTarget) {
+                    pill.className = currentSystem === 'DEPO'
+                        ? 'mode-pill px-3.5 py-2 rounded-xl text-xs font-semibold transition-all bg-teal-700 text-white shadow-xs'
+                        : 'mode-pill px-3.5 py-2 rounded-xl text-xs font-semibold transition-all bg-[#167B43] text-white shadow-xs';
+                } else {
+                    pill.className = 'mode-pill px-3.5 py-2 rounded-xl text-xs font-medium transition-all text-slate-600 hover:bg-slate-100';
+                }
+            });
+
+            modeTitle.textContent = modeData[modeKey].title;
+            modeDesc.textContent = modeData[modeKey].desc;
+            autoDetectHint.classList.add('hidden');
+
+            selectedFiles = [];
+            generatedResults = [];
+            fileInput.value = '';
+            btnDownload.classList.add('hidden');
+            btnDownload.classList.remove('flex');
+            btnInspect.classList.add('hidden');
+            btnInspect.classList.remove('flex');
+            progressWrapper.classList.add('hidden');
+            fileListDrawer.classList.add('hidden');
+            btnToggleList.textContent = 'Lihat Daftar';
+            renderQueue();
+            updateStats(0, 0, 0);
+            statTime.textContent = '0.0s';
+            setTerminalState('IDLE');
+            autoScrollEnabled = true;
+            btnScrollBottom.classList.add('hidden');
+            logArea.innerHTML = `<div class="text-slate-500">[SISTEM ${currentSystem}] Mode aktif: ${modeData[modeKey].title}. Menunggu input file...</div>`;
+        }
+
+        switchPabrik.addEventListener('click', () => {
+            if (currentSystem !== 'PABRIK') activateMode('split_voucher');
+        });
+
+        switchDepo.addEventListener('click', () => {
+            if (currentSystem !== 'DEPO') activateMode('split_voucher_depo');
+        });
+
+        modePills.forEach(pill => {
+            pill.addEventListener('click', () => activateMode(pill.dataset.mode));
+        });
+
+        // Queue Management
+        function renderQueue() {
+            if (selectedFiles.length === 0) {
+                queueBox.classList.add('hidden');
+                fileListDrawer.innerHTML = '';
+                return;
+            }
+            queueBox.classList.remove('hidden');
+            const totalBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+            queueBadge.textContent = `${selectedFiles.length} File`;
+            queueSize.textContent = `Total ${formatBytes(totalBytes)}`;
+
+            fileListDrawer.innerHTML = selectedFiles.map((f, idx) => `
+                <div class="px-3.5 py-2 flex items-center justify-between gap-2 hover:bg-slate-50">
+                    <span class="truncate text-slate-700 font-medium">${idx + 1}. ${f.name}</span>
+                    <button type="button" onclick="removeSingleFile(${idx})" class="text-slate-400 hover:text-rose-600 text-[11px] font-mono-code shrink-0" title="Hapus file ini">✕</button>
+                </div>
+            `).join('');
+        }
+
+        window.removeSingleFile = function(idx) {
+            selectedFiles.splice(idx, 1);
+            renderQueue();
+            updateStats(selectedFiles.length, 0, 0);
+        };
+
+        btnToggleList.addEventListener('click', () => {
+            const isHidden = fileListDrawer.classList.toggle('hidden');
+            btnToggleList.textContent = isHidden ? 'Lihat Daftar' : 'Tutup Daftar';
+        });
+
+        btnClearFiles.addEventListener('click', () => {
+            selectedFiles = [];
+            generatedResults = [];
+            fileInput.value = '';
+            btnDownload.classList.add('hidden');
+            btnDownload.classList.remove('flex');
+            btnInspect.classList.add('hidden');
+            btnInspect.classList.remove('flex');
+            progressWrapper.classList.add('hidden');
+            autoDetectHint.classList.add('hidden');
+            renderQueue();
+            updateStats(0, 0, 0);
+            setTerminalState('IDLE');
+            logMessage('🗑️ Antrean file dihapus.', 'warn');
         });
 
         dropZone.addEventListener('click', () => fileInput.click());
         
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
+            dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }, false);
         });
 
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
+        ['dragenter', 'dragover'].forEach(ev => {
+            dropZone.addEventListener(ev, () => {
+                dropZone.classList.add(currentSystem === 'DEPO' ? 'drag-over-depo' : 'drag-over-pabrik');
+            }, false);
         });
 
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
+        ['dragleave', 'drop'].forEach(ev => {
+            dropZone.addEventListener(ev, () => {
+                dropZone.classList.remove('drag-over-pabrik', 'drag-over-depo');
+            }, false);
         });
 
-        dropZone.addEventListener('drop', (e) => handleFiles(e.dataTransfer.files));
+        // Mendukung Drag & Drop Folder sekaligus!
+        async function traverseFileTree(item, fileList) {
+            if (item.isFile) {
+                const file = await new Promise(resolve => item.file(resolve));
+                if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+                    fileList.push(file);
+                }
+            } else if (item.isDirectory) {
+                const dirReader = item.createReader();
+                const entries = await new Promise(resolve => dirReader.readEntries(resolve));
+                for (const entry of entries) {
+                    await traverseFileTree(entry, fileList);
+                }
+            }
+        }
+
+        dropZone.addEventListener('drop', async e => {
+            const items = e.dataTransfer.items;
+            if (items && items.length > 0 && items[0].webkitGetAsEntry) {
+                const collected = [];
+                for (let i = 0; i < items.length; i++) {
+                    const entry = items[i].webkitGetAsEntry();
+                    if (entry) await traverseFileTree(entry, collected);
+                }
+                handleFiles(collected);
+            } else {
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+
         fileInput.addEventListener('change', function() { handleFiles(this.files); });
 
         function handleFiles(files) {
-            const newFiles = Array.from(files).filter(f => f.type === 'application/pdf');
-            if (newFiles.length === 0) {
+            const validPdfs = Array.from(files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+            if (validPdfs.length === 0) {
                 logMessage('❌ Tidak ada file PDF valid.', 'error');
                 return;
             }
-            
-            selectedFiles = [...selectedFiles, ...newFiles];
-            updateFileCount();
+
+            const existingKeys = new Set(selectedFiles.map(f => `${f.name}_${f.size}`));
+            let addedCount = 0;
+            for (const file of validPdfs) {
+                const key = `${file.name}_${file.size}`;
+                if (!existingKeys.has(key)) {
+                    selectedFiles.push(file);
+                    existingKeys.add(key);
+                    addedCount++;
+                }
+            }
+
+            // Smart Auto-Detection untuk Mode Binder
+            if (currentMode === 'binder_pabrik') {
+                const hasUrutan6 = selectedFiles.some(f => /\s6\.*(\.pdf)$/i.test(f.name));
+                if (hasUrutan6) {
+                    autoDetectHint.textContent = '💡 Terdeteksi file urutan ke-6 (khas Depo)';
+                    autoDetectHint.classList.remove('hidden');
+                }
+            }
+
+            renderQueue();
+            updateStats(selectedFiles.length, 0, 0);
             btnDownload.classList.add('hidden');
-            finalZip = null;
+            btnDownload.classList.remove('flex');
+            btnInspect.classList.add('hidden');
+            btnInspect.classList.remove('flex');
+            generatedResults = [];
+            logMessage(`ℹ️ [${currentSystem}] ${addedCount} file ditambahkan (Total antrean: ${selectedFiles.length} file).`);
         }
 
-        function updateFileCount() {
-            if (selectedFiles.length > 0) {
-                fileCountDisplay.textContent = `${selectedFiles.length} File PDF Siap`;
-                fileCountDisplay.classList.remove('hidden');
-                setTimeout(() => fileCountDisplay.classList.remove('opacity-0'), 50);
-                logMessage(`ℹ️ ${selectedFiles.length} file diantrekan.`);
-            } else {
-                fileCountDisplay.classList.add('opacity-0');
-                setTimeout(() => fileCountDisplay.classList.add('hidden'), 300);
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !btnProcess.disabled) {
+                btnProcess.click();
             }
+        });
+
+        // Log Search & Filter
+        logFilter.addEventListener('change', applyLogFilter);
+        logSearch.addEventListener('input', applyLogFilter);
+
+        function applyLogFilter() {
+            const mode = logFilter.value;
+            const query = logSearch.value.trim().toLowerCase();
+            const entries = logArea.querySelectorAll('[data-log-type]');
+            entries.forEach(el => {
+                const t = el.dataset.logType;
+                const textMatch = !query || el.textContent.toLowerCase().includes(query);
+                let typeMatch = true;
+                if (mode === 'ERROR_ONLY') typeMatch = (t === 'error' || t === 'warn');
+                else if (mode === 'SUCCESS_ONLY') typeMatch = (t === 'success');
+                
+                el.classList.toggle('hidden', !(textMatch && typeMatch));
+            });
+            scrollToLogBottom();
         }
 
         function logMessage(msg, type = 'info') {
             const div = document.createElement('div');
             div.textContent = msg;
-            div.className = 'mb-1 ' + (
-                type === 'error' ? 'text-red-400' : 
-                type === 'warn' ? 'text-yellow-400' : 
-                type === 'success' ? 'text-green-400 font-bold' : 
+            div.dataset.logType = type;
+            div.className = 'mb-1 break-words ' + (
+                type === 'error' ? 'text-rose-400' : 
+                type === 'warn' ? 'text-amber-300' : 
+                type === 'success' ? 'text-emerald-400 font-medium' : 
                 'text-slate-300'
             );
+
+            const mode = logFilter.value;
+            const query = logSearch.value.trim().toLowerCase();
+            const textMatch = !query || msg.toLowerCase().includes(query);
+            let typeMatch = true;
+            if (mode === 'ERROR_ONLY') typeMatch = (type === 'error' || type === 'warn');
+            else if (mode === 'SUCCESS_ONLY') typeMatch = (type === 'success');
+            if (!(textMatch && typeMatch)) div.classList.add('hidden');
             
             if (logArea.querySelector('.text-slate-500')) logArea.innerHTML = '';
             logArea.appendChild(div);
-            logArea.scrollTop = logArea.scrollHeight;
+            scrollToLogBottom();
         }
 
         btnClearLog.addEventListener('click', () => {
-            logArea.innerHTML = '<div class="text-slate-500">Log dibersihkan...</div>';
+            autoScrollEnabled = true;
+            btnScrollBottom.classList.add('hidden');
+            logArea.innerHTML = `<div class="text-slate-500">[SISTEM ${currentSystem}] Log dibersihkan. Menunggu input...</div>`;
         });
 
-        // Ekstraksi teks per halaman (mendukung teks normal & fallback OCR CamScanner)
-        async function extractTextFromPage(pdfDoc, pageNumber, labelLog) {
+        btnCopyLog.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(logArea.innerText);
+                const orig = btnCopyLog.textContent;
+                btnCopyLog.textContent = 'Tersalin ✓';
+                btnCopyLog.classList.add('text-emerald-400');
+                setTimeout(() => {
+                    btnCopyLog.textContent = orig;
+                    btnCopyLog.classList.remove('text-emerald-400');
+                }, 1500);
+            } catch (e) {
+                logMessage('⚠️ Gagal menyalin log.', 'warn');
+            }
+        });
+
+        // Ekstraksi teks per halaman dengan Shared OCR Worker
+        async function extractTextFromPage(pdfDoc, pageNumber, labelLog, scale = 1.8) {
             const page = await pdfDoc.getPage(pageNumber);
             const textContent = await page.getTextContent();
             let text = textContent.items.map(item => item.str).join(' ').trim();
+            let usedOcr = false;
             
             if (text.length < 20) {
+                usedOcr = true;
                 logMessage(`👀 OCR (Scan Gambar) pada ${labelLog}...`, 'warn');
-                const viewport = page.getViewport({ scale: 1.5 });
+                const viewport = page.getViewport({ scale: scale });
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
                 
                 await page.render({ canvasContext: context, viewport: viewport }).promise;
-                const result = await Tesseract.recognize(canvas, 'eng');
+                const worker = await getOcrWorker();
+                const result = await worker.recognize(canvas);
                 text = result.data.text;
             }
             
             page.cleanup();
-            return text;
+            return { text, usedOcr };
         }
 
-        async function extractTextFromFirstPage(file) {
+        async function extractAllPagesText(file, scale = 2.2) {
             try {
                 const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({data: arrayBuffer.slice(0)}).promise;
-                if (pdf.numPages === 0) return "";
-                const text = await extractTextFromPage(pdf, 1, file.name);
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+                if (pdf.numPages === 0) return { text: "", usedOcr: false };
+                
+                let fullText = "";
+                let anyOcr = false;
+                for (let p = 1; p <= pdf.numPages; p++) {
+                    if (isCancelled) break;
+                    const res = await extractTextFromPage(pdf, p, `${file.name} [Hal ${p}]`, scale);
+                    fullText += " " + res.text;
+                    if (res.usedOcr) anyOcr = true;
+                }
                 await pdf.destroy();
-                return text;
+                return { text: fullText.trim(), usedOcr: anyOcr };
             } catch (error) {
                 console.error("Error reading PDF:", error);
-                return "";
+                return { text: "", usedOcr: false };
             }
         }
 
-        function parseNomorVoucher(text) {
+        // Helper Penanganan Nomor/Nama Duplikat (Anti-Timpa)
+        function getUniquePdfName(baseNameWithoutExt, usedSet) {
+            let candidate = `${baseNameWithoutExt}.pdf`;
+            if (!usedSet.has(candidate.toLowerCase())) {
+                usedSet.add(candidate.toLowerCase());
+                return { filename: candidate, isDuplicate: false };
+            }
+            let counter = 2;
+            while (true) {
+                candidate = `${baseNameWithoutExt} (${counter}).pdf`;
+                if (!usedSet.has(candidate.toLowerCase())) {
+                    usedSet.add(candidate.toLowerCase());
+                    return { filename: candidate, isDuplicate: true, dupIndex: counter };
+                }
+                counter++;
+            }
+        }
+
+        // Parsers
+        function parseNomorVoucherPabrik(text) {
             let match = text.match(/Nomor\s*Dokumen\s*[:\s|]*(\d{8,12})/i);
             if (!match) match = text.match(/\b(21\d{8})\b/);
             if (!match) match = text.match(/(21\d{8})/);
             return match ? (match[1] || match[0]) : null;
         }
 
+        function parseDepoDocNumber(rawText) {
+            if (!rawText) return null;
+            const clean = rawText.replace(/\s+/g, " ");
+            const labelMatch = clean.match(/N[oa]m[oa]r\s*D[oa]kum[ea]n\s*[:;\-]?\s*([0-9OIl]{8,12})/i);
+            if (labelMatch) {
+                const fixedDigits = labelMatch[1].replace(/O/gi, "0").replace(/[Il]/g, "1");
+                if (/^\d{8,12}$/.test(fixedDigits)) return fixedDigits;
+            }
+            const sapMatch = clean.match(/\b(21\d{8})\b/);
+            if (sapMatch) return sapMatch[1];
+            return null;
+        }
+
+        function parseBpbNumberDepo(rawText) {
+            if (!rawText) return null;
+            const clean = rawText.replace(/\s+/g, " ");
+            const bpbMatch = clean.match(/BPB\s*(?:NO\.?|NOMOR)?\s*[:;\-]?\s*([0-9OIl]{1,6})(?=\s*\/|\s|$|[^0-9])/i);
+            if (bpbMatch) {
+                const fixedDigits = bpbMatch[1].replace(/O/gi, "0").replace(/[Il]/g, "1");
+                if (/^\d+$/.test(fixedDigits)) {
+                    return String(parseInt(fixedDigits, 10));
+                }
+            }
+            const remarkMatch = clean.match(/Remark\s*[:;\-]?\s*.*?BPB\s*(?:NO\.?)?\s*(\d+)/i);
+            if (remarkMatch) {
+                return String(parseInt(remarkMatch[1], 10));
+            }
+            return null;
+        }
+
+        // Cancel Handler
+        btnCancel.addEventListener('click', () => {
+            isCancelled = true;
+            btnCancel.disabled = true;
+            logMessage('🛑 Membatalkan proses setelah file saat ini selesai...', 'warn');
+        });
+
+        // Main Execution
         btnProcess.addEventListener('click', async () => {
             if (selectedFiles.length === 0) {
                 logMessage('❌ Silakan masukkan file PDF terlebih dahulu.', 'error');
                 return;
             }
 
+            isCancelled = false;
+            generatedResults = [];
             btnProcess.disabled = true;
-            btnProcess.innerHTML = '<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Memproses...';
+            btnClearFiles.disabled = true;
+            btnCancel.disabled = false;
+            btnCancel.classList.remove('hidden');
+            btnCancel.classList.add('flex');
             btnDownload.classList.add('hidden');
+            btnDownload.classList.remove('flex');
+            btnInspect.classList.add('hidden');
+            btnInspect.classList.remove('flex');
+
+            btnProcess.innerHTML = '<svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Memproses...</span>';
             logArea.innerHTML = '';
+            autoScrollEnabled = true;
+            btnScrollBottom.classList.add('hidden');
+            setTerminalState('RUNNING');
+            startTimer();
+            updateStats(selectedFiles.length, 0, 0);
+            updateProgress(0, selectedFiles.length, 'Menyiapkan antrean...');
             
-            logMessage(`🚀 Memulai proses mode: ${modeData[currentMode].title}...`);
-            finalZip = new JSZip();
+            logMessage(`🚀 [${currentSystem}] Memulai proses: ${modeData[currentMode].title}...`);
 
             try {
                 if (currentMode === 'split_voucher') {
-                    await processSplitVoucher();
+                    await processSplitVoucher(parseNomorVoucherPabrik, 1.5, 'PABRIK');
                 } else if (currentMode === 'binder_pabrik') {
-                    await processBinder(5);
-                } else if (currentMode === 'binder_depo') {
-                    await processBinder(6);
+                    await processBinder(5, 'PABRIK');
                 } else if (currentMode === 'rename_custom') {
                     await processRenameCustom();
                 } else if (currentMode === 'rename_bt') {
                     await processRenameBT();
                 } else if (currentMode === 'rename_voucher') {
-                    await processRenameVoucher();
+                    await processRenameVoucherPabrik();
+                } else if (currentMode === 'split_voucher_depo') {
+                    await processSplitVoucher(parseDepoDocNumber, 2.2, 'DEPO');
+                } else if (currentMode === 'binder_depo') {
+                    await processBinder(6, 'DEPO');
+                } else if (currentMode === 'rename_bt_depo') {
+                    await processRenameBTDepo();
+                } else if (currentMode === 'rename_voucher_depo') {
+                    await processRenameVoucherDepo();
                 }
 
-                if (Object.keys(finalZip.files).length > 0) {
+                stopTimer();
+
+                if (generatedResults.length > 0) {
+                    const today = new Date().toISOString().slice(0, 10);
+                    finalZipName = `Hasil_${currentSystem}_${currentMode}_${today}.zip`;
+                    btnDownloadLabel.textContent = `Unduh Hasil (${generatedResults.length} File)`;
                     btnDownload.classList.remove('hidden');
-                    logMessage('✅ Proses selesai. Silakan unduh file hasil (ZIP).', 'success');
+                    btnDownload.classList.add('flex');
+                    btnInspect.classList.remove('hidden');
+                    btnInspect.classList.add('flex');
+
+                    const okCount = generatedResults.filter(r => r.status === 'SUKSES').length;
+                    const failCount = generatedResults.filter(r => r.status !== 'SUKSES').length;
+
+                    // Catat ke riwayat sesi
+                    sessionHistory.unshift({
+                        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                        system: currentSystem,
+                        mode: modeData[currentMode].title,
+                        total: generatedResults.length,
+                        ok: okCount,
+                        fail: failCount,
+                        duration: statTime.textContent
+                    });
+                    historyCount.textContent = sessionHistory.length;
+
+                    logMessage(`✅ Proses ${currentSystem} selesai (${okCount} sukses, ${failCount} gagal/perlu cek).`, 'success');
                 } else {
-                    logMessage('⚠️ Proses selesai, tetapi tidak ada file yang berhasil diproses/dihasilkan.', 'warn');
+                    logMessage('⚠️ Proses selesai, tidak ada file hasil yang terbentuk.', 'warn');
                 }
+
+                setTerminalState(isCancelled ? 'CANCELLED' : 'DONE');
+                scrollToLogBottom(true);
                 
             } catch (error) {
-                logMessage(`❌ Terjadi kesalahan fatal: ${error.message}`, 'error');
+                stopTimer();
+                setTerminalState('IDLE');
+                logMessage(`❌ Terjadi kesalahan: ${error.message}`, 'error');
                 console.error(error);
             } finally {
                 btnProcess.disabled = false;
-                btnProcess.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" />
-                    </svg>
-                    Jalankan Proses
-                `;
+                btnClearFiles.disabled = false;
+                btnCancel.classList.add('hidden');
+                btnCancel.classList.remove('flex');
+                btnProcess.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Jalankan Proses</span>';
             }
         });
 
-        async function processSplitVoucher() {
+        // 1 & 6. Split & Rename Voucher
+        async function processSplitVoucher(parserFn, ocrScale, systemLabel) {
             let berhasil = 0, gagal = 0;
             const usedFilenames = new Set();
+            const totalFiles = selectedFiles.length;
 
-            for (const file of selectedFiles) {
+            for (let fIdx = 0; fIdx < totalFiles; fIdx++) {
+                if (isCancelled) break;
+                const file = selectedFiles[fIdx];
+                updateProgress(fIdx, totalFiles, `Membuka ${file.name}...`);
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const pdfJsDoc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
                     const pdfLibDoc = await PDFLib.PDFDocument.load(arrayBuffer);
                     const totalPages = pdfLibDoc.getPageCount();
 
-                    logMessage(`📄 Memproses '${file.name}' (${totalPages} halaman)...`);
+                    logMessage(`📄 [${systemLabel}] Memproses '${file.name}' (${totalPages} halaman)...`);
 
                     for (let i = 0; i < totalPages; i++) {
+                        if (isCancelled) break;
                         const pageNum = i + 1;
+                        updateProgress(
+                            fIdx + (pageNum / totalPages),
+                            totalFiles,
+                            `${file.name} (Hal ${pageNum}/${totalPages})`
+                        );
                         try {
-                            const text = await extractTextFromPage(pdfJsDoc, pageNum, `${file.name} [Hal ${pageNum}]`);
-                            const nomorDokumen = parseNomorVoucher(text);
+                            const { text, usedOcr } = await extractTextFromPage(pdfJsDoc, pageNum, `${file.name} [Hal ${pageNum}]`, ocrScale);
+                            const nomorDokumen = parserFn(text);
 
-                            // Buat PDF baru khusus 1 halaman ini
                             const singlePdf = await PDFLib.PDFDocument.create();
                             const [copiedPage] = await singlePdf.copyPages(pdfLibDoc, [i]);
                             singlePdf.addPage(copiedPage);
                             const pdfBytes = await singlePdf.save();
 
                             if (nomorDokumen) {
-                                let baseName = `${nomorDokumen} 1`;
-                                let finalName = `${baseName}.pdf`;
-                                let counter = 2;
+                                const { filename: finalName, isDuplicate } = getUniquePdfName(`${nomorDokumen} 1`, usedFilenames);
 
-                                // Cegah file tertimpa jika ada nomor dokumen sama dalam 1 batch
-                                while (usedFilenames.has(finalName)) {
-                                    finalName = `${baseName} (${counter}).pdf`;
-                                    counter++;
-                                }
-                                usedFilenames.add(finalName);
-
-                                finalZip.file(finalName, pdfBytes);
+                                generatedResults.push({
+                                    originalName: `${file.name} [Hal ${pageNum}]`,
+                                    outputName: finalName,
+                                    bytes: pdfBytes,
+                                    status: 'SUKSES',
+                                    extractedCode: nomorDokumen,
+                                    notes: (usedOcr ? 'OCR Scan' : 'Teks Digital') + (isDuplicate ? ' (Duplikat)' : '')
+                                });
                                 berhasil++;
-                                logMessage(`✅ [Hal ${pageNum}] -> '${finalName}'`, 'success');
+                                logMessage(`✅ [Hal ${pageNum}] -> '${finalName}'${isDuplicate ? ' [Nomor Sama / Duplikat]' : ''}`, 'success');
                             } else {
                                 gagal++;
                                 const fallbackName = `Tidak_Terbaca_${file.name.replace(/\.pdf$/i, '')}_Hal_${pageNum}.pdf`;
-                                finalZip.file(fallbackName, pdfBytes);
-                                logMessage(`⚠️ [Hal ${pageNum}] Nomor Dokumen tidak terbaca -> disimpan sebagai '${fallbackName}'`, 'warn');
+                                generatedResults.push({
+                                    originalName: `${file.name} [Hal ${pageNum}]`,
+                                    outputName: fallbackName,
+                                    bytes: pdfBytes,
+                                    status: 'GAGAL',
+                                    extractedCode: '-',
+                                    notes: 'Nomor Dokumen tidak terbaca'
+                                });
+                                logMessage(`⚠️ [Hal ${pageNum}] Nomor Dokumen tidak terbaca -> '${fallbackName}'`, 'warn');
                             }
+                            updateStats(berhasil + gagal, berhasil, gagal);
                         } catch (pageErr) {
                             gagal++;
+                            updateStats(berhasil + gagal, berhasil, gagal);
                             logMessage(`❌ [Hal ${pageNum}] Gagal diproses: ${pageErr.message}`, 'error');
                         }
                     }
@@ -442,12 +1165,14 @@
                 }
             }
 
+            updateProgress(totalFiles, totalFiles, 'Selesai memecah & menamai seluruh halaman');
             logMessage(`-`.repeat(40));
             logMessage(`Total Halaman Terbaca : ${berhasil}`);
             logMessage(`Total Tidak Terbaca   : ${gagal}`);
         }
 
-        async function processBinder(maxUrutan) {
+        // 2 & 7. Binder (Pabrik 5, Depo 6)
+        async function processBinder(maxUrutan, systemLabel) {
             const grupDokumen = {};
             const nomorWajib = Array.from({ length: maxUrutan }, (_, i) => i + 1);
 
@@ -458,7 +1183,6 @@
                 if (parts.length > 1) {
                     const id = parts[0];
                     const akhiran = parts.slice(1).join(' ').trim();
-                    
                     const match = akhiran.match(/^(\d+)(\.*)$/);
                     
                     if (match) {
@@ -474,16 +1198,18 @@
             }
 
             const idList = Object.keys(grupDokumen);
-            logMessage(`Ditemukan ${idList.length} Nomor File (ID) berbeda (Target urutan: 1 s/d ${maxUrutan}).`);
+            logMessage(`[${systemLabel}] Ditemukan ${idList.length} Nomor File (ID) berbeda (Target urutan: 1 s/d ${maxUrutan}).`);
+            updateStats(idList.length, 0, 0);
             let berhasil = 0, dilewati = 0;
 
-            for (const id of idList) {
+            for (let idx = 0; idx < idList.length; idx++) {
+                if (isCancelled) break;
+                const id = idList[idx];
                 const daftar_file = grupDokumen[id];
+                updateProgress(idx + 1, idList.length, `Menggabungkan ID ${id}...`);
                 
                 daftar_file.sort((a, b) => {
-                    if (a.nomor !== b.nomor) {
-                        return a.nomor - b.nomor;
-                    }
+                    if (a.nomor !== b.nomor) return a.nomor - b.nomor;
                     return a.jumlahTitik - b.jumlahTitik;
                 });
 
@@ -504,7 +1230,14 @@
                             copiedPages.forEach((page) => mergedPdf.addPage(page));
                         }
                         const pdfBytes = await mergedPdf.save();
-                        finalZip.file(`${id}.pdf`, pdfBytes);
+                        generatedResults.push({
+                            originalName: `${daftar_file.length} file (${urutanLabel})`,
+                            outputName: `${id}.pdf`,
+                            bytes: pdfBytes,
+                            status: 'SUKSES',
+                            extractedCode: id,
+                            notes: `Lengkap ${daftar_file.length} bagian`
+                        });
                         berhasil++;
                         logMessage(`[SUKSES] ${id}.pdf (${daftar_file.length} file digabung)`, 'success');
                     } catch (err) {
@@ -522,125 +1255,406 @@
                     
                     logMessage(`[DILEWATI] ID ${id} tidak sesuai kriteria${alasan}`, 'warn');
                 }
+                updateStats(idList.length, berhasil, dilewati);
             }
             logMessage(`-`.repeat(40));
             logMessage(`Berhasil: ${berhasil} | Dilewati: ${dilewati}`);
         }
 
+        // 3. Rename Perpajakan
         async function processRenameCustom() {
             let berhasil = 0, gagal = 0;
+            const usedFilenames = new Set();
+            const total = selectedFiles.length;
 
-            for (const file of selectedFiles) {
+            for (let i = 0; i < total; i++) {
+                if (isCancelled) break;
+                const file = selectedFiles[i];
+                updateProgress(i + 1, total, `Memproses ${file.name}...`);
                 try {
-                    const text = await extractTextFromFirstPage(file);
+                    const { text, usedOcr } = await extractAllPagesText(file, 1.5);
                     
                     let matchNomor = text.match(/0*(\d+)\/KUT/i);
-                    if(!matchNomor) matchNomor = text.match(/Nomor Dokumen\s*[:\s]*0*(\d+)/i);
-                    
+                    if (!matchNomor) matchNomor = text.match(/Nomor Dokumen\s*[:\s]*0*(\d+)/i);
                     let matchNama = text.match(/NAMA\s*[:\s]+([a-zA-Z0-9\s\.\-]+)/i);
                     
+                    const arrayBuffer = await file.arrayBuffer();
                     if (matchNomor && matchNama) {
                         const nomor = matchNomor[1].trim();
                         let nama = matchNama[1].replace(/NOMOR|IDENTITAS|TEMPAT|NPWP/gi, '').trim();
+                        const { filename: newFilename, isDuplicate } = getUniquePdfName(`${nomor}-${nama}`, usedFilenames);
                         
-                        const newFilename = `${nomor}-${nama}.pdf`;
-                        const arrayBuffer = await file.arrayBuffer();
-                        
-                        finalZip.file(newFilename, arrayBuffer);
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: newFilename,
+                            bytes: arrayBuffer,
+                            status: 'SUKSES',
+                            extractedCode: `${nomor}-${nama}`,
+                            notes: (usedOcr ? 'OCR Scan' : 'Teks Digital') + (isDuplicate ? ' (Duplikat)' : '')
+                        });
                         berhasil++;
-                        logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'`, 'success');
+                        logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'${isDuplicate ? ' [Nomor Sama / Duplikat]' : ''}`, 'success');
                     } else {
                         gagal++;
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: `GAGAL_BACA_${file.name}`,
+                            bytes: arrayBuffer,
+                            status: 'GAGAL',
+                            extractedCode: '-',
+                            notes: 'Nomor/Nama pajak tidak terbaca'
+                        });
                         logMessage(`❌ [GAGAL] Format nomor/nama tidak ditemukan pada '${file.name}'`, 'error');
                     }
                 } catch (e) {
                     gagal++;
                     logMessage(`⚠️ [ERROR] pada '${file.name}': ${e.message}`, 'error');
                 }
+                updateStats(total, berhasil, gagal);
             }
             logMessage(`-`.repeat(40));
             logMessage(`Total Berhasil : ${berhasil}`);
             logMessage(`Total Gagal    : ${gagal}`);
         }
 
+        // 4. Rename Bukti Transfer Pabrik
         async function processRenameBT() {
             let berhasil = 0, gagal = 0;
+            const usedFilenames = new Set();
+            const total = selectedFiles.length;
 
-            for (const file of selectedFiles) {
+            for (let i = 0; i < total; i++) {
+                if (isCancelled) break;
+                const file = selectedFiles[i];
+                updateProgress(i + 1, total, `Memproses ${file.name}...`);
                 try {
-                    const text = await extractTextFromFirstPage(file);
+                    const { text, usedOcr } = await extractAllPagesText(file, 1.8);
                     const match = text.match(/BPB\s*0*(\d+)/i);
+                    const arrayBuffer = await file.arrayBuffer();
 
                     if (match) {
                         const angka = match[1];
-                        const newFilename = `${angka}..pdf`;
-                        const arrayBuffer = await file.arrayBuffer();
-                        
-                        finalZip.file(newFilename, arrayBuffer);
+                        const { filename: newFilename, isDuplicate } = getUniquePdfName(`${angka}..`, usedFilenames);
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: newFilename,
+                            bytes: arrayBuffer,
+                            status: 'SUKSES',
+                            extractedCode: `BPB ${angka}`,
+                            notes: (usedOcr ? 'OCR Scan' : 'Teks Digital') + (isDuplicate ? ' (Duplikat)' : '')
+                        });
                         berhasil++;
-                        logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'`, 'success');
+                        logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'${isDuplicate ? ' [Nomor Sama / Duplikat]' : ''}`, 'success');
                     } else {
                         gagal++;
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: `GAGAL_BACA_${file.name}`,
+                            bytes: arrayBuffer,
+                            status: 'GAGAL',
+                            extractedCode: '-',
+                            notes: 'Kode BPB tidak terbaca'
+                        });
                         logMessage(`❌ [GAGAL] Kode BPB tidak terbaca pada '${file.name}'`, 'error');
                     }
                 } catch (e) {
                     gagal++;
                     logMessage(`⚠️ [ERROR] pada '${file.name}': ${e.message}`, 'error');
                 }
+                updateStats(total, berhasil, gagal);
             }
             logMessage(`-`.repeat(40));
             logMessage(`Total Berhasil : ${berhasil}`);
             logMessage(`Total Gagal    : ${gagal}`);
         }
 
-        async function processRenameVoucher() {
+        // 5. Rename Voucher Pabrik
+        async function processRenameVoucherPabrik() {
             let berhasil = 0, gagal = 0;
+            const usedNames = new Map();
+            const total = selectedFiles.length;
 
-            for (const file of selectedFiles) {
+            for (let i = 0; i < total; i++) {
+                if (isCancelled) break;
+                const file = selectedFiles[i];
+                updateProgress(i + 1, total, `Memproses ${file.name}...`);
                 try {
-                    const text = await extractTextFromFirstPage(file);
-                    const nomorDokumen = parseNomorVoucher(text);
+                    const { text, usedOcr } = await extractAllPagesText(file, 1.8);
+                    const nomorDokumen = parseNomorVoucherPabrik(text);
+                    const arrayBuffer = await file.arrayBuffer();
 
                     if (nomorDokumen) {
-                        const newFilename = `${nomorDokumen} 1.pdf`;
-                        const arrayBuffer = await file.arrayBuffer();
-                        
-                        finalZip.file(newFilename, arrayBuffer);
+                        const { filename: newFilename, isDuplicate } = getUniquePdfName(`${nomorDokumen} 1`, usedNames);
+
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: newFilename,
+                            bytes: arrayBuffer,
+                            status: 'SUKSES',
+                            extractedCode: nomorDokumen,
+                            notes: (usedOcr ? 'OCR Scan' : 'Teks Digital') + (isDuplicate ? ' (Duplikat)' : '')
+                        });
                         berhasil++;
-                        logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'`, 'success');
+                        logMessage(`✅ [SUKSES] '${file.name}' -> '${newFilename}'${isDuplicate ? ' [Nomor Sama / Duplikat]' : ''}`, 'success');
                     } else {
                         gagal++;
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: `GAGAL_BACA_${file.name}`,
+                            bytes: arrayBuffer,
+                            status: 'GAGAL',
+                            extractedCode: '-',
+                            notes: 'Nomor Dokumen tidak terbaca'
+                        });
                         logMessage(`❌ [GAGAL] Nomor Dokumen tidak terbaca pada '${file.name}'`, 'error');
                     }
                 } catch (e) {
                     gagal++;
                     logMessage(`⚠️ [ERROR] pada '${file.name}': ${e.message}`, 'error');
                 }
+                updateStats(total, berhasil, gagal);
             }
             logMessage(`-`.repeat(40));
             logMessage(`Total Berhasil : ${berhasil}`);
             logMessage(`Total Gagal    : ${gagal}`);
         }
 
-        btnDownload.addEventListener('click', async () => {
-            if (!finalZip) return;
-            
-            btnDownload.innerHTML = '<svg class="animate-spin h-5 w-5 mr-3 text-navy" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Mempersiapkan Unduhan...';
-            
-            try {
-                const zipFileName = `Hasil_${currentMode}_${new Date().getTime()}.zip`;
-                const content = await finalZip.generateAsync({ type: "blob" });
-                saveAs(content, zipFileName);
-                logMessage(`📥 Berhasil mengunduh: ${zipFileName}`, 'success');
-            } catch (err) {
-                logMessage(`❌ Error saat membuat ZIP: ${err.message}`, 'error');
-            } finally {
-                btnDownload.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                    Unduh Hasil (ZIP)
-                `;
+        // 8. Rename Bukti Transfer Depo
+        async function processRenameBTDepo() {
+            let berhasil = 0, gagal = 0;
+            const usedNames = new Map();
+            const total = selectedFiles.length;
+
+            for (let i = 0; i < total; i++) {
+                if (isCancelled) break;
+                const file = selectedFiles[i];
+                updateProgress(i + 1, total, `Memproses ${file.name}...`);
+                logMessage(`[${i + 1}/${total}] Memproses BT Depo: ${file.name}`);
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const { text, usedOcr } = await extractAllPagesText(file, 2.2);
+                    const bpbNum = parseBpbNumberDepo(text);
+
+                    if (bpbNum) {
+                        const { filename: targetFileName, isDuplicate } = getUniquePdfName(`${bpbNum}`, usedNames);
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: targetFileName,
+                            bytes: arrayBuffer,
+                            status: 'SUKSES',
+                            extractedCode: `BPB ${bpbNum}`,
+                            notes: (usedOcr ? 'OCR Scan' : 'Teks Digital') + (isDuplicate ? ' (Duplikat)' : '')
+                        });
+                        berhasil++;
+                        logMessage(`  ✓ Ditemukan BPB No. ${bpbNum} -> ${targetFileName}${isDuplicate ? ' [Nomor Sama / Duplikat]' : ''}`, 'success');
+                    } else {
+                        const targetFileName = `GAGAL_BACA_${file.name}`;
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: targetFileName,
+                            bytes: arrayBuffer,
+                            status: 'GAGAL',
+                            extractedCode: '-',
+                            notes: 'Nomor BPB Depo tidak terbaca'
+                        });
+                        gagal++;
+                        logMessage(`  ✗ Nomor BPB tidak ditemukan -> ${targetFileName}`, 'error');
+                    }
+                } catch (err) {
+                    gagal++;
+                    logMessage(`  ✗ Error membaca ${file.name}: ${err.message}`, 'error');
+                }
+                updateStats(total, berhasil, gagal);
             }
+            logMessage(`-`.repeat(40));
+            logMessage(`Total Berhasil : ${berhasil}`);
+            logMessage(`Total Gagal    : ${gagal}`);
+        }
+
+        // 9. Rename Voucher Depo
+        async function processRenameVoucherDepo() {
+            let berhasil = 0, gagal = 0;
+            const usedNames = new Map();
+            const total = selectedFiles.length;
+
+            for (let i = 0; i < total; i++) {
+                if (isCancelled) break;
+                const file = selectedFiles[i];
+                updateProgress(i + 1, total, `Memproses ${file.name}...`);
+                logMessage(`[${i + 1}/${total}] Memproses Voucher Depo: ${file.name}`);
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const { text, usedOcr } = await extractAllPagesText(file, 2.2);
+                    const docNum = parseDepoDocNumber(text);
+
+                    if (docNum) {
+                        const { filename: targetFileName, isDuplicate } = getUniquePdfName(`${docNum} 1`, usedNames);
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: targetFileName,
+                            bytes: arrayBuffer,
+                            status: 'SUKSES',
+                            extractedCode: docNum,
+                            notes: (usedOcr ? 'OCR Scan' : 'Teks Digital') + (isDuplicate ? ' (Duplikat)' : '')
+                        });
+                        berhasil++;
+                        logMessage(`  ✓ Nomor Dokumen: ${docNum} -> ${targetFileName}${isDuplicate ? ' [Nomor Sama / Duplikat]' : ''}`, 'success');
+                    } else {
+                        const targetFileName = `GAGAL_BACA_${file.name}`;
+                        generatedResults.push({
+                            originalName: file.name,
+                            outputName: targetFileName,
+                            bytes: arrayBuffer,
+                            status: 'GAGAL',
+                            extractedCode: '-',
+                            notes: 'Nomor Dokumen Depo tidak terbaca'
+                        });
+                        gagal++;
+                        logMessage(`  ✗ Nomor Dokumen tidak ditemukan -> ${targetFileName}`, 'error');
+                    }
+                } catch (err) {
+                    gagal++;
+                    logMessage(`  ✗ Error membaca ${file.name}: ${err.message}`, 'error');
+                }
+                updateStats(total, berhasil, gagal);
+            }
+            logMessage(`-`.repeat(40));
+            logMessage(`Total Berhasil : ${berhasil}`);
+            logMessage(`Total Gagal    : ${gagal}`);
+        }
+
+        // Build & Download ZIP dynamically
+        async function buildAndDownloadZip() {
+            if (generatedResults.length === 0) return;
+
+            btnDownload.innerHTML = '<svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span>Mengemas ZIP...</span>';
+
+            try {
+                const zip = new JSZip();
+                const separateFailed = optSeparateFailed.checked;
+                const includeCsv = optIncludeCsv.checked;
+
+                const csvRows = [
+                    ['No', 'Sistem', 'Mode', 'File Asal', 'Nama File Hasil', 'Kode Terdeteksi', 'Status', 'Keterangan']
+                ];
+
+                const usedZipPaths = new Set();
+                generatedResults.forEach((item, idx) => {
+                    const folderPrefix = (separateFailed && item.status !== 'SUKSES') ? 'Perlu_Pengecekan/' : '';
+                    const baseWithoutExt = item.outputName.replace(/\.pdf$/i, '');
+                    const { filename: safeName } = getUniquePdfName(folderPrefix + baseWithoutExt, usedZipPaths);
+                    const finalPath = safeName;
+                    zip.file(finalPath, item.bytes);
+
+                    csvRows.push([
+                        idx + 1,
+                        currentSystem,
+                        modeData[currentMode].title,
+                        `"${item.originalName.replace(/"/g, '""')}"`,
+                        `"${finalPath.replace(/"/g, '""')}"`,
+                        `"${item.extractedCode}"`,
+                        item.status,
+                        `"${item.notes}"`
+                    ]);
+                });
+
+                if (includeCsv) {
+                    const csvContent = '\uFEFF' + csvRows.map(r => r.join(',')).join('\n');
+                    zip.file(`Rekap_Audit_${currentSystem}_${currentMode}.csv`, csvContent);
+                }
+
+                const content = await zip.generateAsync({ type: "blob" });
+                saveAs(content, finalZipName);
+                logMessage(`📥 Berhasil mengunduh: ${finalZipName}`, 'success');
+            } catch (err) {
+                logMessage(`❌ Error membuat ZIP: ${err.message}`, 'error');
+            } finally {
+                btnDownload.innerHTML = `<svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg><span class="truncate">Unduh Hasil (${generatedResults.length} File)</span>`;
+            }
+        }
+
+        btnDownload.addEventListener('click', buildAndDownloadZip);
+
+        // Modal Pratinjau & Edit Nama Hasil
+        function renderInspectList() {
+            const q = inspectSearch.value.trim().toLowerCase();
+            const filtered = generatedResults
+                .map((item, idx) => ({ item, idx }))
+                .filter(({ item }) => !q || item.outputName.toLowerCase().includes(q) || item.originalName.toLowerCase().includes(q));
+
+            inspectSummary.textContent = `Menampilkan ${filtered.length} dari ${generatedResults.length} file`;
+
+            inspectList.innerHTML = filtered.map(({ item, idx }) => {
+                const isOk = item.status === 'SUKSES';
+                return `
+                    <div class="p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl hover:bg-slate-50 ${!isOk ? 'bg-amber-50/50' : ''}">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-1.5">
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${isOk ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}">${item.status}</span>
+                                <span class="text-[11px] text-slate-400 truncate">${item.originalName}</span>
+                            </div>
+                            <div class="mt-1.5 flex items-center gap-1.5">
+                                <input type="text" value="${item.outputName}" onchange="updateOutputFilename(${idx}, this.value)" class="w-full text-xs font-mono-code font-medium text-slate-800 bg-white border ${isOk ? 'border-slate-200' : 'border-amber-300'} rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#167B43]">
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.updateOutputFilename = function(idx, newVal) {
+            let clean = newVal.trim();
+            if (!clean) return;
+            if (!clean.toLowerCase().endsWith('.pdf')) clean += '.pdf';
+            generatedResults[idx].outputName = clean;
+            if (!clean.startsWith('GAGAL_BACA_') && !clean.startsWith('Tidak_Terbaca_')) {
+                generatedResults[idx].status = 'SUKSES';
+                generatedResults[idx].notes = 'Dikoreksi manual';
+            }
+            renderInspectList();
+        };
+
+        btnInspect.addEventListener('click', () => {
+            inspectSearch.value = '';
+            renderInspectList();
+            inspectModal.classList.remove('hidden');
         });
+
+        inspectSearch.addEventListener('input', renderInspectList);
+        btnCloseInspect.addEventListener('click', () => inspectModal.classList.add('hidden'));
+        btnCloseInspect2.addEventListener('click', () => inspectModal.classList.add('hidden'));
+        btnSaveAndDownload.addEventListener('click', () => {
+            inspectModal.classList.add('hidden');
+            buildAndDownloadZip();
+        });
+
+        // Modal Riwayat Sesi
+        btnOpenHistory.addEventListener('click', () => {
+            if (sessionHistory.length === 0) {
+                historyList.innerHTML = '<p class="text-slate-400 text-center py-8">Belum ada riwayat pemrosesan pada sesi ini.</p>';
+            } else {
+                historyList.innerHTML = sessionHistory.map(h => `
+                    <div class="py-3 flex items-center justify-between gap-3">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${h.system === 'DEPO' ? 'bg-teal-50 text-teal-700' : 'bg-emerald-50 text-emerald-700'}">${h.system}</span>
+                                <span class="font-semibold text-slate-800">${h.mode}</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Pukul ${h.time} &bull; Durasi ${h.duration}</p>
+                        </div>
+                        <div class="text-right font-mono-code text-[11px]">
+                            <div class="text-emerald-600 font-semibold">${h.ok} Sukses</div>
+                            <div class="text-amber-600">${h.fail} Gagal</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+            historyModal.classList.remove('hidden');
+        });
+
+        btnCloseHistory.addEventListener('click', () => historyModal.classList.add('hidden'));
     </script>
 </body>
 </html>

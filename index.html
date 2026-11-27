@@ -180,10 +180,6 @@
 
                 <!-- Smart Pre-Flight & Options Bar -->
                 <div class="mb-4 flex flex-wrap items-center justify-between gap-2 bg-slate-50/90 border border-slate-200/70 rounded-xl px-3.5 py-2.5 text-xs">
-                    <label class="inline-flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
-                        <input type="checkbox" id="opt-include-csv" checked class="rounded border-slate-300 text-[#167B43] focus:ring-[#167B43]">
-                        <span>Sertakan Rekap Audit (.CSV) di ZIP</span>
-                    </label>
                     <label class="inline-flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium" title="Pisahkan file yang gagal terbaca ke dalam sub-folder khusus di dalam ZIP">
                         <input type="checkbox" id="opt-separate-failed" checked class="rounded border-slate-300 text-[#167B43] focus:ring-[#167B43]">
                         <span>Pisahkan Folder Gagal</span>
@@ -363,7 +359,6 @@
         const dropBrowseText = document.getElementById('drop-browse-text');
         const fileInput = document.getElementById('file-input');
 
-        const optIncludeCsv = document.getElementById('opt-include-csv');
         const optSeparateFailed = document.getElementById('opt-separate-failed');
 
         const queueBox = document.getElementById('queue-box');
@@ -446,7 +441,7 @@
             'rename_bt': { 
                 system: 'PABRIK',
                 title: 'Rename Bukti Transfer', 
-                desc: 'Membaca teks isi PDF Bukti Transfer Pabrik. Mencari kode BPB dan mengubah nama file menjadi [Angka]..pdf (Contoh: 199..pdf).' 
+                desc: 'Membaca teks isi PDF Bukti Transfer Pabrik. Mencari kode BPB dan mengubah nama file menjadi [Angka].pdf (Contoh: 150.pdf).' 
             },
             'rename_voucher': { 
                 system: 'PABRIK',
@@ -1347,7 +1342,7 @@
 
                     if (match) {
                         const angka = match[1];
-                        const { filename: newFilename, isDuplicate } = getUniquePdfName(`${angka}..`, usedFilenames);
+                        const { filename: newFilename, isDuplicate } = getUniquePdfName(`${angka}`, usedFilenames);
                         generatedResults.push({
                             originalName: file.name,
                             outputName: newFilename,
@@ -1547,36 +1542,14 @@
             try {
                 const zip = new JSZip();
                 const separateFailed = optSeparateFailed.checked;
-                const includeCsv = optIncludeCsv.checked;
-
-                const csvRows = [
-                    ['No', 'Sistem', 'Mode', 'File Asal', 'Nama File Hasil', 'Kode Terdeteksi', 'Status', 'Keterangan']
-                ];
 
                 const usedZipPaths = new Set();
-                generatedResults.forEach((item, idx) => {
+                generatedResults.forEach((item) => {
                     const folderPrefix = (separateFailed && item.status !== 'SUKSES') ? 'Perlu_Pengecekan/' : '';
                     const baseWithoutExt = item.outputName.replace(/\.pdf$/i, '');
                     const { filename: safeName } = getUniquePdfName(folderPrefix + baseWithoutExt, usedZipPaths);
-                    const finalPath = safeName;
-                    zip.file(finalPath, item.bytes);
-
-                    csvRows.push([
-                        idx + 1,
-                        currentSystem,
-                        modeData[currentMode].title,
-                        `"${item.originalName.replace(/"/g, '""')}"`,
-                        `"${finalPath.replace(/"/g, '""')}"`,
-                        `"${item.extractedCode}"`,
-                        item.status,
-                        `"${item.notes}"`
-                    ]);
+                    zip.file(safeName, item.bytes);
                 });
-
-                if (includeCsv) {
-                    const csvContent = '\uFEFF' + csvRows.map(r => r.join(',')).join('\n');
-                    zip.file(`Rekap_Audit_${currentSystem}_${currentMode}.csv`, csvContent);
-                }
 
                 const content = await zip.generateAsync({ type: "blob" });
                 saveAs(content, finalZipName);

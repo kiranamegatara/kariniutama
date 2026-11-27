@@ -456,7 +456,7 @@
             'binder_depo': { 
                 system: 'DEPO',
                 title: 'Binder Depo', 
-                desc: 'Menggabungkan PDF Depo berdasarkan ID di awal nama file (urutan lengkap 1 s/d 6 beserta variasi titiknya).' 
+                desc: 'Menggabungkan PDF Depo berdasarkan ID di awal nama file (minimal wajib lengkap urutan 1 s/d 6, dan jika lebih seperti 1 s/d 7, 8, 9, atau 10+ tetap ikut digabung berurutan).' 
             },
             'rename_bt_depo': {
                 system: 'DEPO',
@@ -1043,7 +1043,7 @@
                 } else if (currentMode === 'split_voucher_depo') {
                     await processSplitVoucher(parseDepoDocNumber, 2.2, 'DEPO');
                 } else if (currentMode === 'binder_depo') {
-                    await processBinder(6, 'DEPO');
+                    await processBinder(6, 'DEPO', true);
                 } else if (currentMode === 'rename_bt_depo') {
                     await processRenameBTDepo();
                 } else if (currentMode === 'rename_voucher_depo') {
@@ -1179,10 +1179,10 @@
             logMessage(`Total Tidak Terbaca   : ${gagal}`);
         }
 
-        // 2 & 7. Binder (Pabrik 5, Depo 6)
-        async function processBinder(maxUrutan, systemLabel) {
+        // 2 & 7. Binder (Pabrik tepat 5, Depo minimal 6 dan boleh lebih berurutan)
+        async function processBinder(minUrutan, systemLabel, allowMore = false) {
             const grupDokumen = {};
-            const nomorWajib = Array.from({ length: maxUrutan }, (_, i) => i + 1);
+            const nomorWajibMinimal = Array.from({ length: minUrutan }, (_, i) => i + 1);
 
             for (const file of selectedFiles) {
                 const nameWithoutExt = file.name.replace(/\.pdf$/i, "");
@@ -1206,7 +1206,8 @@
             }
 
             const idList = Object.keys(grupDokumen);
-            logMessage(`[${systemLabel}] Ditemukan ${idList.length} Nomor File (ID) berbeda (Target urutan: 1 s/d ${maxUrutan}).`);
+            const targetDesc = allowMore ? `minimal 1 s/d ${minUrutan} (boleh lebih)` : `1 s/d ${minUrutan}`;
+            logMessage(`[${systemLabel}] Ditemukan ${idList.length} Nomor File (ID) berbeda (Target urutan: ${targetDesc}).`);
             updateStats(idList.length, 0, 0);
             let berhasil = 0, dilewati = 0;
 
@@ -1222,10 +1223,19 @@
                 });
 
                 const nomorTersedia = new Set(daftar_file.map(item => item.nomor));
-                const lengkapSemuaNomor = nomorWajib.every(num => nomorTersedia.has(num));
-                const tidakMelebihiBatas = daftar_file.every(item => item.nomor >= 1 && item.nomor <= maxUrutan);
+                const maxNomorAda = Math.max(...daftar_file.map(item => item.nomor));
+                const lengkapMinimal = nomorWajibMinimal.every(num => nomorTersedia.has(num));
+                const tidakMelebihiBatas = allowMore
+                    ? daftar_file.every(item => item.nomor >= 1)
+                    : daftar_file.every(item => item.nomor >= 1 && item.nomor <= minUrutan);
 
-                if (lengkapSemuaNomor && tidakMelebihiBatas) {
+                // Jika allowMore aktif (khusus Depo), pastikan urutan 1 sampai nomor tertinggi tidak ada yang bolong
+                const targetUrutanPenuh = allowMore
+                    ? Array.from({ length: Math.max(minUrutan, maxNomorAda) }, (_, i) => i + 1)
+                    : nomorWajibMinimal;
+                const urutanBeruntunLengkap = targetUrutanPenuh.every(num => nomorTersedia.has(num));
+
+                if (lengkapMinimal && tidakMelebihiBatas && urutanBeruntunLengkap) {
                     const urutanLabel = daftar_file.map(item => item.akhiran).join(' -> ');
                     logMessage(`Menggabungkan ID ${id} (${urutanLabel})...`);
                     
@@ -1244,7 +1254,7 @@
                             bytes: pdfBytes,
                             status: 'SUKSES',
                             extractedCode: id,
-                            notes: `Lengkap ${daftar_file.length} bagian`
+                            notes: `Lengkap ${daftar_file.length} bagian (1-${maxNomorAda})`
                         });
                         berhasil++;
                         logMessage(`[SUKSES] ${id}.pdf (${daftar_file.length} file digabung)`, 'success');
@@ -1254,12 +1264,12 @@
                     }
                 } else {
                     dilewati++;
-                    const kurang = nomorWajib.filter(num => !nomorTersedia.has(num));
-                    const lebih = daftar_file.filter(item => item.nomor > maxUrutan).map(item => item.akhiran);
+                    const kurang = targetUrutanPenuh.filter(num => !nomorTersedia.has(num));
+                    const lebih = !allowMore ? daftar_file.filter(item => item.nomor > minUrutan).map(item => item.akhiran) : [];
                     
                     let alasan = '';
                     if (kurang.length > 0) alasan += ` (Kurang nomor: ${kurang.join(', ')})`;
-                    if (lebih.length > 0) alasan += ` (Ada nomor > ${maxUrutan}: ${lebih.join(', ')})`;
+                    if (lebih.length > 0) alasan += ` (Ada nomor > ${minUrutan}: ${lebih.join(', ')})`;
                     
                     logMessage(`[DILEWATI] ID ${id} tidak sesuai kriteria${alasan}`, 'warn');
                 }
